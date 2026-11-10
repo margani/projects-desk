@@ -1,0 +1,11 @@
+# Installed by scripts/install-watcher.sh (@REPO@ and @PATH@ are filled in).
+# Closes project sessions idle for RC_IDLE_HOURS (24, rc.sh) except RC_KEEP_OPEN;
+# never one that is working.
+# Logs: journalctl --user -u claude-rc-idle
+[Unit]
+Description=Close idle project Claude Code sessions
+
+[Service]
+Type=oneshot
+ExecStart=@REPO@/scripts/rc.sh close-idle
+Environment=PATH=@PATH@

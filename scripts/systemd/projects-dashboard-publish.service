@@ -1,0 +1,13 @@
+# Installed by scripts/install-watcher.sh (@REPO@ and @PATH@ are filled in).
+# Logs: journalctl --user -u projects-dashboard-publish
+[Unit]
+Description=Copy projects-dashboard status/ changes into D1
+
+[Service]
+Type=oneshot
+ExecStart=@REPO@/scripts/publish-status.sh
+Environment=STATUS_REPO=@REPO@
+# node and cfapi (the repository's bin/ or your own), for the D1 sync.
+Environment=PATH=@PATH@
+# Debounce (30s) + the D1 sync; never hang forever on the network.
+TimeoutStartSec=15min

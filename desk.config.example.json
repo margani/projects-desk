@@ -1,0 +1,10 @@
+{
+  "worker_name": "projects-desk",
+  "d1": {
+    "account": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+    "database": "YOUR_D1_DATABASE_ID",
+    "name": "projects-desk"
+  },
+  "domains": ["desk.example.com"],
+  "claude": false
+}

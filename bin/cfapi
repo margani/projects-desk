@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Calls the Cloudflare API with a saved token, never printing it.
+#   cfapi GET /accounts                         read token
+#   cfapi --edit POST /accounts/<id>/... -d '{...}'   edit token
+# Tokens: ~/.config/cloudflare/{read,edit}.token. CLOUDFLARE_API_TOKEN is used
+# when the file is missing. Extra arguments go to curl. Prints the JSON
+# response; exits 1 if success is false, 3 if there is no token.
+set -euo pipefail
+kind=read
+if [ "${1:-}" = "--edit" ]; then kind=edit; shift; fi
+[ $# -ge 2 ] || { echo "usage: cfapi [--edit] METHOD /path [curl args]" >&2; exit 2; }
+method="$1"; api_path="$2"; shift 2
+file="${XDG_CONFIG_HOME:-$HOME/.config}/cloudflare/$kind.token"
+if [ -s "$file" ]; then token=$(<"$file"); else token="${CLOUDFLARE_API_TOKEN:-}"; fi
+[ -n "$token" ] || { echo "no $kind token: save one in $file (see docs/SETUP.md)" >&2; exit 3; }
+# Through a process substitution, because a header on the command line can be
+# read by every process on the machine with ps.
+out=$(curl -sS -X "$method" "https://api.cloudflare.com/client/v4$api_path" \
+  -H @<(printf 'Authorization: Bearer %s\n' "$token") -H "Content-Type: application/json" "$@")
+printf '%s\n' "$out"
+# Not `.success // true`: jq's // also replaces false, so a refused call passed.
+printf '%s' "$out" | jq -e '.success != false' >/dev/null

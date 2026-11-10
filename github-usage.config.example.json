@@ -1,0 +1,6 @@
+{
+  "accounts": [
+    { "login": "your-org", "kind": "org" },
+    { "login": "your-github-login", "kind": "user" }
+  ]
+}

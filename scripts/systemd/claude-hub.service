@@ -1,0 +1,21 @@
+# Installed by scripts/install-watcher.sh (@REPO@ and @PATH@ are filled in).
+# Opens the coordinator session in the tmux session claude-rc at login,
+# and at boot too (linger is on), so the phone can always reach it.
+# Logs: journalctl --user -u claude-hub
+[Unit]
+Description=Coordinator Claude Code session (hub) with Remote Control
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@REPO@/scripts/rc.sh open hub
+# claude, tmux and jq must be found.
+Environment=PATH=@PATH@
+# The tmux server and every session in it outlive this unit: stopping or
+# restarting the unit must never kill the open sessions.
+KillMode=process
+TimeoutStartSec=2min
+
+[Install]
+WantedBy=default.target

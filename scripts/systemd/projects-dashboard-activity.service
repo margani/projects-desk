@@ -1,0 +1,16 @@
+# Installed by scripts/install-watcher.sh (@REPO@, @NODE@ and @PATH@ are filled in).
+# Logs: journalctl --user -u projects-dashboard-activity
+[Unit]
+Description=Collect daily activity for every project into projects-dashboard status/
+
+[Service]
+Type=oneshot
+ExecStart=@NODE@ @REPO@/scripts/activity-all.mjs
+# git, gh, cfapi (the repository's bin/ or your own) and node must all be found.
+Environment=PATH=@PATH@
+Environment=GIT_TERMINAL_PROMPT=0
+Environment="GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=15"
+# Low priority: it runs while the laptop is in use.
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min

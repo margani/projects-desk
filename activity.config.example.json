@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "my-project": {
+      "exclude": ["generated/**"]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# Installed by scripts/install-watcher.sh.
+[Unit]
+Description=Close idle project Claude Code sessions every hour
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

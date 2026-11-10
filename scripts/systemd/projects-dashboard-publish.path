@@ -1,0 +1,11 @@
+# Installed by scripts/install-watcher.sh (@REPO@ is replaced with the repo path).
+[Unit]
+Description=Watch projects-dashboard status/ for changes
+
+[Path]
+# Fires on create, delete, rename and close-after-write of files in status/.
+PathChanged=@REPO@/status
+Unit=projects-dashboard-publish.service
+
+[Install]
+WantedBy=default.target

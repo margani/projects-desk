@@ -1,0 +1,12 @@
+# Installed by scripts/install-watcher.sh (@REPO@, @NODE@ and @PATH@ are filled in).
+# Logs: journalctl --user -u projects-dashboard-users
+[Unit]
+Description=Read each project's user numbers into the projects-dashboard database
+
+[Service]
+Type=oneshot
+ExecStart=@NODE@ @REPO@/scripts/users-sync.mjs
+# cfapi (the repository's bin/ or your own) and node must be found.
+Environment=PATH=@PATH@
+Nice=10
+TimeoutStartSec=5min

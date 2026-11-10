@@ -1,0 +1,21 @@
+{
+  "sources": [
+    { "name": "Laptop", "kind": "local", "exclude_under": ["~/mnt"], "skip_types": ["fuse.rclone"] },
+    {
+      "name": "Home server", "kind": "ssh", "host": "homeserver", "user": "me",
+      "paths": [{ "path": "/", "name": "System disk" }]
+    },
+    {
+      "name": "Google Drive", "kind": "rclone", "kind_label": "Google Drive",
+      "remotes": [{ "remote": "my-gdrive" }]
+    },
+    {
+      "name": "Cloudflare D1", "kind": "d1",
+      "accounts": [{ "id": "YOUR_CLOUDFLARE_ACCOUNT_ID", "name": "Personal" }]
+    },
+    {
+      "name": "Cloudflare R2", "kind": "r2",
+      "accounts": [{ "id": "YOUR_CLOUDFLARE_ACCOUNT_ID", "name": "Personal" }]
+    }
+  ]
+}

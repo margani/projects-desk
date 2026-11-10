@@ -1,0 +1,13 @@
+# Installed by scripts/install-watcher.sh.
+# Storage and GitHub usage every 10 minutes: the page reads them from
+# D1 when it opens, so no commit or deploy is needed for fresh numbers.
+[Unit]
+Description=Collect projects-dashboard usage every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Unit=projects-dashboard-usage.service
+
+[Install]
+WantedBy=timers.target

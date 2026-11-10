@@ -1,0 +1,14 @@
+# Installed by scripts/install-watcher.sh (@REPO@, @NODE@ and @PATH@ are filled in).
+# Logs: journalctl --user -u projects-dashboard-usage
+[Unit]
+Description=Collect GitHub usage and storage use into the projects-dashboard database
+
+[Service]
+Type=oneshot
+ExecStart=@NODE@ @REPO@/scripts/usage-sync.mjs
+# gh, cfapi (the repository's bin/ or your own), rclone, ssh and df must all be found.
+Environment=PATH=@PATH@
+Environment="GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=15"
+Nice=10
+# Every source has its own timeout (scripts/lib/storage-usage.mjs); this is the cap.
+TimeoutStartSec=5min

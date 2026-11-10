@@ -1,0 +1,13 @@
+# Installed by scripts/install-watcher.sh.
+[Unit]
+Description=Daily user numbers for projects-dashboard
+
+[Timer]
+# After midnight UTC, so "yesterday" in the projects' daily tables is complete.
+OnCalendar=*-*-* 06:40
+# Runs at the next wake or boot when the laptop was off or asleep at 06:40.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

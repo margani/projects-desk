@@ -1,0 +1,21 @@
+# No trailing slash: a worktree's node_modules symlink is not a directory and
+# was committed once.
+node_modules
+dist/
+.wrangler/
+.dev.vars
+# editor temp files that may appear in status/
+*.swp
+*~
+.#*
+# Status files and usage numbers live in D1; these are the laptop's
+# working copies, written by project sessions and the timers.
+status/*.json
+usage/
+# Each installation's own settings; only the *.example.json files are tracked.
+desk.config.json
+github-usage.config.json
+storage-usage.config.json
+users.config.json
+activity.config.json
+wrangler.jsonc

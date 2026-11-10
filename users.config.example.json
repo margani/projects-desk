@@ -1,0 +1,10 @@
+{
+  "projects": {
+    "my-app": {
+      "d1": { "account": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "database": "22222222-2222-4222-8222-222222222222" },
+      "metrics": [
+        { "label": "visits yesterday", "sql": "SELECT COALESCE(SUM(visits), 0) AS n FROM daily WHERE day = date('now', '-1 day')" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Installed by scripts/install-watcher.sh.
+# Fallback for the path unit: when the user's inotify instances run out
+# (fs.inotify.max_user_instances, shared by every editor and dev server), the
+# path unit fails and nothing would be published. A pass with nothing new
+# reads one hash per project from D1, so running every 2 minutes is cheap.
+[Unit]
+Description=Publish projects-dashboard status/ changes every 2 minutes (fallback)
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+Unit=projects-dashboard-publish.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+# Installed by scripts/install-watcher.sh.
+[Unit]
+Description=Daily activity collection for projects-dashboard
+
+[Timer]
+OnCalendar=*-*-* 06:30
+# Runs at the next wake or boot when the laptop was off or asleep at 06:30.
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

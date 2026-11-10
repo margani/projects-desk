@@ -1,0 +1,21 @@
+{
+  "name": "projects-desk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private dashboard of your projects, fed by the status files your Claude Code sessions write",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test": "node --test test/*.test.mjs",
+    "deploy": "npm run build && bash scripts/deploy.sh",
+    "ci": "npm test && npm run build"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
