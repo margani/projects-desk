@@ -3,7 +3,7 @@
 A private dashboard of all your projects, kept up to date by the Claude Code
 sessions that work on them.
 
-![The Overview page, with demo data](docs/screenshot.png)
+![The Overview page, with demo data](docs/screenshots/overview.png)
 
 Each project's Claude Code session writes one small JSON file: versions,
 health, what is waiting on you, next steps. A watcher on your computer copies
@@ -25,6 +25,19 @@ with no commit and no deploy.
   per project, reachable from your phone over Remote Control.
 
 There is no framework. The only dependency is `wrangler`.
+
+## Screenshots
+
+Every tab, with demo data and with the optional Claude tab turned on.
+
+| | |
+|---|---|
+| **Desktop** | **Overview** |
+| ![The Desktop tab: an icon for each live app](docs/screenshots/desktop.png) | ![The Overview tab: what needs you, across every project](docs/screenshots/overview.png) |
+| **Activity** | **Builds** |
+| ![The Activity tab: 12 weeks of commits per project](docs/screenshots/activity.png) | ![The Builds tab: GitHub Actions usage and build times](docs/screenshots/builds.png) |
+| **Claude** | **Storage** |
+| ![The Claude tab: plan limits and use per project](docs/screenshots/claude.png) | ![The Storage tab: used and free space everywhere](docs/screenshots/storage.png) |
 
 ## What you need
 
