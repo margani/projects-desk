@@ -1,7 +1,7 @@
 // Collects one project's activity from its git checkout, GitHub (`gh`) and
 // Cloudflare Workers Builds (`cfapi`, the saved read token). Shared by
 // scripts/activity.mjs (one project) and scripts/activity-all.mjs (the timer).
-import './repo-bin.mjs';
+import { launch } from './repo-bin.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir } from 'node:fs/promises';
@@ -12,7 +12,15 @@ import {
 } from './activity.mjs';
 
 const run = promisify(execFile);
-const sh = async (cmd, args) => (await run(cmd, args, { maxBuffer: 256 * 1024 * 1024, encoding: 'utf8' })).stdout;
+const sh = async (cmd, args) => {
+  const [file, argv] = launch(cmd, args);
+  return (await run(file, argv, { maxBuffer: 256 * 1024 * 1024, encoding: 'utf8', windowsHide: true })).stdout;
+};
+
+/** Where to look for checkouts. `;` separates them on Windows, where `:` is in C:\\. */
+export function activityRoots(value, home, delimiter = path.delimiter) {
+  return (value || path.join(home, 'projects')).split(delimiter).filter(Boolean);
+}
 
 async function findConfigs(dir, depth = 2) {
   const found = [];

@@ -21,8 +21,8 @@ with no commit and no deploy.
   remotes, D1 and R2.
 - **A page per project**, with its owner tasks, issues and next steps.
 - **An installable app** (PWA) that also works on a phone.
-- **Claude Code sessions on demand** (optional): open and close one tmux session
-  per project, reachable from your phone over Remote Control.
+- **Claude Code sessions on demand** (optional, Linux only): open and close one
+  tmux session per project, reachable from your phone over Remote Control.
 
 There is no framework. The only dependency is `wrangler`.
 
@@ -41,15 +41,16 @@ Every tab, with demo data and with the optional Claude tab turned on.
 
 ## What you need
 
-- A Linux computer with a systemd user session. The watcher and timers run there.
-- Node.js, `git`, `gh` (logged in), `curl`, `jq`, `flock`.
+- A computer running Windows, macOS or Linux. The watcher and timers run there.
+  On Windows it needs PowerShell only: no WSL and no bash.
+- Node.js 22 or newer, `git`, and `gh` (logged in).
 - A Cloudflare account with a domain on it. The Worker, D1 and Access all run on
   Cloudflare.
 - Claude Code, for the sessions that write the status files.
 
 The page lists private issue titles, so it must not be public. The setup puts it
-behind Cloudflare Access, and `scripts/deploy.sh` fails a deploy if a custom
-domain answers without an Access login.
+behind Cloudflare Access, and `npm run deploy` fails if a custom domain answers
+without an Access login.
 
 ## Get started
 
@@ -60,6 +61,9 @@ npm install
 npm test
 npm run dev   # http://localhost:8787, an empty dashboard from local files
 ```
+
+In PowerShell on Windows, write `npm.cmd` instead of `npm`. Plain `npm` starts a
+`.ps1` script, and Windows blocks those by default.
 
 Then follow [docs/SETUP.md](docs/SETUP.md) to create the database, protect the
 domain, deploy and install the watcher. It starts with a prompt you can give

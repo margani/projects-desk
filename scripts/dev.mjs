@@ -40,7 +40,7 @@ http.createServer(async (req, res) => {
   try {
     // A fresh process each time: Node caches imported modules, so an in-process
     // build would keep using old copies of scripts/lib/*.mjs.
-    execFileSync(process.execPath, [path.join(root, 'scripts/build.mjs')], { stdio: 'ignore' });
+    execFileSync(process.execPath, [path.join(root, 'scripts/build.mjs')], { stdio: 'ignore', windowsHide: true });
     const html = await readFile(path.join(root, 'dist/index.html'));
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(html);
   } catch (err) {

@@ -85,7 +85,7 @@ note_result() { # note_result <exit code> <sync output>
   echo "$failures" > "$file"
   log "sync failed ($failures in a row)"
   if (( failures == FAILURES_BEFORE_NOTICE )); then
-    reason=$(grep -m1 -E '^(curl: |Error: D1)' <<<"$2")
+    reason=$(grep -m1 -E '^(curl: |cfapi: |Error: D1)' <<<"$2")
     notify "Status has not reached the dashboard for about 30 minutes${reason:+ ($reason)}. Still retrying; no more notices until it works again." critical
   fi
 }

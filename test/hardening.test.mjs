@@ -8,9 +8,12 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, utimesSync, chmodSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { probeApp, collectApps, iconFromHtml } from '../scripts/lib/apps.mjs';
 
-const root = new URL('..', import.meta.url).pathname;
+const root = fileURLToPath(new URL('..', import.meta.url));
+// These run the systemd and tmux scripts, which only exist for Linux.
+const linuxOnly = { skip: process.platform !== 'linux' && 'Linux-only script' };
 
 test('the Desktop never shows another site inside the dashboard (windows removed 2026-10-31)', () => {
   const js = readFileSync(join(root, 'src/client.js'), 'utf8');
@@ -91,7 +94,7 @@ function publish(dir) {
 // killed at the spawn timeout. Its time is compared with a control run on the
 // same machine, not a fixed limit: Workers Builds took 6.3 s for a run that
 // finished normally.
-test('status publish: a file time a day in the future does not stall the run', () => {
+test('status publish: a file time a day in the future does not stall the run', linuxOnly, () => {
   const control = publish(publishFixture(-60));
   assert.equal(control.signal, null, `the control run was killed after ${control.ms} ms: ${control.out}`);
   assert.equal(control.status, 0, control.out);
@@ -104,7 +107,7 @@ test('status publish: a file time a day in the future does not stall the run', (
 // On a fresh install there are no status files yet, and the sync says so with
 // exit 2. The 2-minute timer would count that as an outage and put "has not
 // reached the dashboard" on the desktop after half an hour of nothing wrong.
-test('status publish: no status files yet is not an outage', () => {
+test('status publish: no status files yet is not an outage', linuxOnly, () => {
   const dir = publishFixture(-60);
   const log = join(dir, 'notices');
   const bin = stubBin(dir, {
@@ -124,7 +127,7 @@ test('status publish: no status files yet is not an outage', () => {
 
 // The timer retries every 2 minutes, so a notice per failure became 51 notices
 // in one morning's DNS outage.
-test('status publish: an outage gives one notice, after 15 failed passes, and a success starts over', () => {
+test('status publish: an outage gives one notice, after 15 failed passes, and a success starts over', linuxOnly, () => {
   const dir = publishFixture(-60);
   const log = join(dir, 'notices');
   const online = join(dir, 'online');
@@ -177,14 +180,14 @@ if openable "$1"; then echo yes; else echo no; fi`;
   }).stdout.trim() || 'rc.sh did not load';
 }
 
-test('rc.sh: only plain folder names can be opened', () => {
+test('rc.sh: only plain folder names can be opened', linuxOnly, () => {
   const fx = rcFixture();
   assert.equal(openable('plain-name', fx), 'yes');
   assert.equal(openable("odd'name", fx), 'no', 'a quote would break out of the window command');
   assert.equal(openable('--some-option', fx), 'no', 'a leading dash would become a claude option');
 });
 
-test('rc-session.sh: the name is bound to --remote-control and a dash name is refused', () => {
+test('rc-session.sh: the name is bound to --remote-control and a dash name is refused', linuxOnly, () => {
   const dir = mkdtempSync(join(tmpdir(), 'rc-session-'));
   const run = (name) => spawnSync('bash', [join(root, 'scripts/rc-session.sh'), name, '--permission-mode', 'auto'], {
     cwd: dir, env: { ...process.env, RC_DRY_RUN: '1', CLAUDE_CONFIG_DIR: dir }, encoding: 'utf8',

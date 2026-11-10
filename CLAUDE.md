@@ -13,10 +13,11 @@ npm test          # unit tests (node:test)
 npm run build     # app files + dist/inline.mjs; dist/index.html from local status/*.json
 npm run dev       # http://localhost:8787 from local files, rebuilds on every reload
 npm run ci        # tests + build
-npm run deploy    # build + scripts/deploy.sh
+npm run deploy    # build + scripts/deploy.mjs
 node scripts/sync-status.mjs   # copy status/*.json into D1 now
 node scripts/usage-sync.mjs    # collect usage into D1 now
 node scripts/users-sync.mjs    # read user numbers into D1 now (--dry: print only)
+node scripts/watch.mjs --status   # the Windows/macOS runner: also --background, --once, --stop
 ```
 
 ## Layout
@@ -43,18 +44,27 @@ node scripts/users-sync.mjs    # read user numbers into D1 now (--dry: print onl
   `src/sw.js` too. The manifest link needs `crossorigin="use-credentials"`, or
   Access answers the manifest request with its login redirect.
 - `scripts/lib/schema.mjs`: validator, mirrors `STATUS_INSTRUCTIONS.md`.
-- `scripts/lib/d1.mjs`: the computer's D1 client, through `bin/cfapi`.
+- `scripts/lib/d1.mjs`: the computer's D1 client, through `bin/cfapi.mjs`.
 - `scripts/sync-status.mjs`, `usage-sync.mjs`, `users-sync.mjs`,
   `activity-all.mjs`: collectors run by the timers in `scripts/systemd/`.
   Each failed source keeps its last good numbers and shows a problem.
-- `bin/cfapi`: Cloudflare API helper with the saved tokens, never prints one.
+- `scripts/watch.mjs` and `scripts/lib/runner.mjs`: the computer side on Windows
+  and macOS, one Node process doing what the systemd units do on Linux
+  (`JOBS`, polling `status/` every 5 s). `scripts/install-autostart.mjs` and
+  `scripts/lib/autostart.mjs` start it at login. Linux keeps systemd.
+- `bin/cfapi.mjs`: Cloudflare API helper with the saved tokens, never prints one.
+  `bin/cfapi` is a thin bash wrapper; `scripts/lib/repo-bin.mjs` `launch()` calls
+  Node directly on Windows.
 - `scripts/lib/claude-usage.mjs`, `claude-advice.mjs`: the optional Claude tab.
   The endpoint is undocumented, so every field is optional and a changed shape
   becomes a `problem`.
 - `scripts/rc.sh`, `scripts/rc-session.sh`, `hub/CLAUDE.md`: optional Claude Code
   sessions in tmux.
-- `scripts/deploy.sh`: deploys, then fails if a custom domain answers without an
-  Access login.
+- `scripts/deploy.mjs` and `scripts/lib/deploy.mjs`: deploys, then fails if a
+  custom domain answers without an Access login. `scripts/deploy.sh` only calls
+  it, for Workers Builds.
+- `.github/workflows/checks.yml` runs on Ubuntu, Windows and macOS. There is no
+  other proof for the two that are not Linux, so keep all three.
 
 ## Rules
 
@@ -75,6 +85,11 @@ node scripts/users-sync.mjs    # read user numbers into D1 now (--dry: print onl
   previous version readable (`OLDEST_RENDERED_VERSION`, `FIELDS_BY_VERSION`),
   because projects migrate one session at a time. A change that keeps every
   existing file valid is not a bump.
+- The computer side has two publish paths, `scripts/publish-status.sh` (Linux)
+  and `publishOutcome` in `scripts/lib/runner.mjs` (Windows, macOS). A change to
+  when one notifies goes in both.
+- Every `execFile` and `spawn` under `scripts/` passes `windowsHide: true`, or
+  each run flashes a console window on Windows. A test covers this.
 - Tests use their own fixtures and never read the real `status/` or the private
   config files. A new test must fail on the old code first.
 - The systemd units keep the name `projects-dashboard-*`, and `usage` and `status`
@@ -97,6 +112,9 @@ npx wrangler dev --local --persist-to /tmp/desk-d1
 
 ## Lessons
 
+- On Windows, `npm` in PowerShell resolves to `npm.ps1`, which the default
+  execution policy blocks. Docs say `npm.cmd` and `npx.cmd`, and setup uses no
+  `.ps1` of its own. A test covers the PowerShell blocks in `docs/SETUP.md`.
 - Anything run by a timer notifies once per outage, not once per failure. A
   notice per retry put dozens on the desktop during one DNS outage.
 - `df` hangs on a stuck rclone FUSE mount, so the storage collector skips

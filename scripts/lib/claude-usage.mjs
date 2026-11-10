@@ -146,7 +146,7 @@ function repoName(dir) {
   if (worktreeRepo.has(dir)) return worktreeRepo.get(dir);
   let name = path.basename(dir);
   try {
-    const m = /^gitdir:\s*(.+?)\/\.git\/worktrees\//m.exec(readFileSync(path.join(dir, '.git'), 'utf8'));
+    const m = /^gitdir:\s*(.+?)[\\/]\.git[\\/]worktrees[\\/]/m.exec(readFileSync(path.join(dir, '.git'), 'utf8'));
     if (m) name = path.basename(m[1]);
   } catch { /* a normal checkout, or not a repository */ }
   worktreeRepo.set(dir, name);

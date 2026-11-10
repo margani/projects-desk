@@ -1,11 +1,12 @@
 // Everything that differs between installations comes from files git ignores.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { checkDeskConfig, loadDeskConfig, readOptionalConfig, renderWrangler, root } from '../scripts/lib/config.mjs';
+import { cfapi as runCfapi, saveToken } from '../bin/cfapi.mjs';
 
 const good = {
   worker_name: 'desk-test',
@@ -52,7 +53,7 @@ test('config: no setting can open a workers.dev or preview URL past Access', () 
 });
 
 test('config: write-wrangler stops with exit 2 on a bad config', () => {
-  const r = spawnSync('node', [path.join(root, 'scripts/write-wrangler.mjs')], {
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts/write-wrangler.mjs')], {
     env: { ...process.env, DESK_CONFIG_JSON: JSON.stringify({ ...good, domains: [] }) }, encoding: 'utf8',
   });
   assert.equal(r.status, 2);
@@ -77,38 +78,97 @@ test('config: private settings are ignored by git and only their examples are tr
 });
 
 /** bin/cfapi with a stand-in curl that records what it was given. */
-async function cfapi(args, { token = 'test-token-value', answer = '{"success":true}' } = {}) {
+async function cfapi(args, { token = 'test-token-value', answer = '{"success":true}', fails = null } = {}) {
   const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfapi-'));
-  await mkdir(path.join(dir, 'bin'));
   await mkdir(path.join(dir, 'config/cloudflare'), { recursive: true });
   if (token) await writeFile(path.join(dir, 'config/cloudflare/read.token'), token);
-  const log = path.join(dir, 'log');
-  await writeFile(path.join(dir, 'bin/curl'), `#!/usr/bin/env bash
-printf '%s\\n' "$@" > '${log}'
-while (($#)); do [[ $1 == -H && $2 == @* ]] && cat "\${2#@}" >> '${log}.headers'; shift; done
-printf '%s' '${answer}'
-`);
-  await chmod(path.join(dir, 'bin/curl'), 0o755);
-  const env = { ...process.env, PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, XDG_CONFIG_HOME: path.join(dir, 'config') };
-  delete env.CLOUDFLARE_API_TOKEN;
-  const r = spawnSync(path.join(root, 'bin/cfapi'), args, { env, encoding: 'utf8' });
-  const read = (f) => readFile(f, 'utf8').catch(() => '');
-  return { ...r, argv: await read(log), headers: await read(`${log}.headers`) };
+  const calls = [];
+  let stdout = '';
+  let stderr = '';
+  const status = await runCfapi(args, {
+    env: { XDG_CONFIG_HOME: path.join(dir, 'config') },
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      if (fails) throw fails;
+      return new Response(answer);
+    },
+    stdout: { write: (text) => { stdout += text; } },
+    stderr: { write: (text) => { stderr += text; } },
+  });
+  return { status, calls, stdout, stderr, dir };
 }
 
-test('cfapi: the token goes in a header file, never in curl arguments or output', async () => {
+test('cfapi: the token goes only in the Authorization header, never in the address or output', async () => {
   const r = await cfapi(['GET', '/accounts']);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.argv, /accounts/);
-  assert.match(r.headers, /Bearer test-token-value/);
-  assert.ok(!r.argv.includes('test-token-value'));
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.calls[0].url, 'https://api.cloudflare.com/client/v4/accounts');
+  assert.equal(r.calls[0].init.headers.Authorization, 'Bearer test-token-value');
+  assert.ok(!r.calls[0].url.includes('test-token-value'));
   assert.ok(!r.stdout.includes('test-token-value') && !r.stderr.includes('test-token-value'));
+  assert.equal(r.stdout, '{"success":true}\n');
 });
 
 test('cfapi: no token is exit 3, no path exit 2, a refused call exit 1', async () => {
   assert.equal((await cfapi(['GET', '/x'], { token: null })).status, 3);
   assert.equal((await cfapi([])).status, 2);
   assert.equal((await cfapi(['GET', '/x'], { answer: '{"success":false}' })).status, 1);
+  assert.equal((await cfapi(['GET', '/x', '--unknown', 'y'])).status, 2);
+});
+
+test('cfapi: the exit codes are the same from a real process', () => {
+  const env = { ...process.env, XDG_CONFIG_HOME: path.join(tmpdir(), `desk-no-token-${process.pid}`) };
+  delete env.CLOUDFLARE_API_TOKEN;
+  const run = (args) => spawnSync(process.execPath, [path.join(root, 'bin/cfapi.mjs'), ...args], { env, encoding: 'utf8' });
+  assert.equal(run([]).status, 2);
+  const none = run(['GET', '/x']);
+  assert.equal(none.status, 3);
+  assert.match(none.stderr, /no read token/);
+});
+
+test('cfapi: the bash command still works for anything that calls bin/cfapi', { skip: process.platform === 'win32' && 'bash script' }, () => {
+  assert.equal(spawnSync(path.join(root, 'bin/cfapi'), [], { encoding: 'utf8' }).status, 2);
+});
+
+test('cfapi: --edit takes the edit token, and the body and headers callers use arrive', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfapi-'));
+  await mkdir(path.join(dir, 'cloudflare'));
+  await writeFile(path.join(dir, 'cloudflare/edit.token'), 'edit-value\n');
+  const body = path.join(dir, 'body.json');
+  await writeFile(body, '{"sql":"a\nb"}');
+  const calls = [];
+  const status = await runCfapi(['--edit', 'POST', '/d1', '--data-binary', `@${body}`, '-H', 'cf-r2-jurisdiction: eu'], {
+    env: { XDG_CONFIG_HOME: dir },
+    fetch: async (url, init) => { calls.push(init); return new Response('{}'); },
+    stdout: { write() {} },
+    stderr: { write() {} },
+  });
+  assert.equal(status, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, 'POST');
+  assert.equal(calls[0].headers.Authorization, 'Bearer edit-value');
+  assert.equal(calls[0].headers['cf-r2-jurisdiction'], 'eu');
+  assert.equal(calls[0].body, '{"sql":"a\nb"}', '--data-binary keeps line ends');
+});
+
+test('cfapi: no network is exit 1, with a line the status publish can quote', async () => {
+  const r = await cfapi(['GET', '/x'], { fails: Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } }) });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^cfapi: could not reach api\.cloudflare\.com: ENOTFOUND/);
+});
+
+test('cfapi --save: stores the token privately and never prints it', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfapi-'));
+  let out = '';
+  const io = { env: { XDG_CONFIG_HOME: dir }, stdout: { write: (t) => { out += t; } }, stderr: { write: (t) => { out += t; } } };
+  assert.equal(saveToken('edit', '  secret-value\r\n', io), 0);
+  const file = path.join(dir, 'cloudflare/edit.token');
+  assert.equal(await readFile(file, 'utf8'), 'secret-value\n');
+  if (process.platform !== 'win32') assert.equal((await stat(file)).mode & 0o777, 0o600);
+  assert.ok(!out.includes('secret-value'));
+  assert.equal(saveToken('edit', 'two words', io), 1, 'a pasted sentence is not a token');
+  assert.equal(saveToken('other', 'value', io), 2);
+  assert.equal(await readFile(file, 'utf8'), 'secret-value\n', 'a refused save changes nothing');
 });
 
 test('the Worker bundle loads nothing that needs a file system at start-up', async () => {

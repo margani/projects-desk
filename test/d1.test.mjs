@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, access } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 import { createWorker } from '../scripts/lib/worker.mjs';
 import { query, planSync, sha256, usageStatement } from '../scripts/lib/d1.mjs';
@@ -152,7 +153,7 @@ test('deploy: the Worker binds the same database the laptop writes, and the buil
   const files = (await readdir(out)).sort();
   assert.ok(files.includes('inline.mjs') && files.includes('manifest.webmanifest') && files.includes('sw.js'));
   assert.ok(!files.includes('index.html'), 'no page from build time');
-  const inline = await import(path.join(out, 'inline.mjs'));
+  const inline = await import(pathToFileURL(path.join(out, 'inline.mjs')).href);
   assert.equal(inline.css, await readFile(path.join(root, 'src/styles.css'), 'utf8'));
   assert.equal(inline.js, await readFile(path.join(root, 'src/client.js'), 'utf8'));
   // A local build's page never goes up as a file that would shadow the Worker.
