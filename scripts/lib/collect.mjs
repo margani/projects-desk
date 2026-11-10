@@ -49,6 +49,21 @@ async function cloudflareScripts(cfapi) {
 }
 
 /**
+ * Issues closed since `day`. gh exits non-zero for a repository with Issues
+ * turned off, which used to fail the whole project and leave it with no
+ * commits or builds either; such a repository simply has no closed issues.
+ */
+export async function closedIssues(ghRun, slug, day) {
+  try {
+    return JSON.parse(await ghRun('gh', ['issue', 'list', '-R', slug, '--state', 'closed', '--limit', '1000',
+      '--search', `closed:>=${day}`, '--json', 'closedAt']));
+  } catch (err) {
+    if (/has disabled issues/.test(`${err.message}\n${err.stderr ?? ''}`)) return [];
+    throw err;
+  }
+}
+
+/**
  * @param {{ repo: string, weeks?: number, branches?: string[], exclude?: string[],
  *           workers?: string[], cloudflare?: boolean, now?: Date, warn?: (msg: string) => void }} opts
  * @returns {Promise<{ generated_at: string, days: object[], builds: object[] }>}
@@ -73,8 +88,7 @@ export async function collectActivity({
   const slug = githubSlug(await git('remote', 'get-url', 'origin'));
   let ghRuns = [];
   if (slug) {
-    const closed = JSON.parse(await sh('gh', ['issue', 'list', '-R', slug, '--state', 'closed', '--limit', '1000',
-      '--search', `closed:>=${days[0]}`, '--json', 'closedAt']));
+    const closed = await closedIssues(sh, slug, days[0]);
     addClosedIssues(buckets, closed.map((i) => i.closedAt));
     const runs = JSON.parse(await sh('gh', ['run', 'list', '-R', slug, '--limit', '200',
       '--json', 'workflowName,startedAt,updatedAt,conclusion,status']));
