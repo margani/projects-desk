@@ -82,6 +82,12 @@ test('rc.sh: a dim placeholder or suggestion in the prompt is not a draft; typed
   assert.equal(rc('draft demo', { screen: promptScreen('half a message') }), 'halfamessage');
 });
 
+test('rc.sh: a hub whose first Remote Control connection failed is recognised, so open can reconnect it', linuxOnly, () => {
+  const failed = `● Remote Control disconnected — Session creation failed — see debug log\n  — run /remote-control to reconnect\n`;
+  assert.equal(rc('rc_disconnected demo && echo yes || echo no', { screen: failed }), 'yes');
+  assert.equal(rc('rc_disconnected demo && echo yes || echo no', { screen: promptScreen('') }), 'no');
+});
+
 test('rc.sh: only an idle session with an empty prompt may be closed', linuxOnly, () => {
   const at = Date.now();
   const sessions = {
