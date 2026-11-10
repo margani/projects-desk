@@ -222,3 +222,13 @@ test('range switch: 4 weeks by day and 12 weeks by week, on Activity and Builds'
   assert.doesNotMatch(pane(builds, '4w'), /href="#\/p\/old"/, 'the August run is outside 4 weeks');
   assert.match(pane(builds, '4w'), /href="#\/p\/recent"/);
 });
+
+test('a repository with Issues turned off has no closed issues; other gh failures still fail', async () => {
+  const { closedIssues } = await import('../scripts/lib/collect.mjs');
+  const off = async () => { throw Object.assign(new Error('Command failed: gh issue list'), { stderr: "the 'o/r' repository has disabled issues" }); };
+  assert.deepEqual(await closedIssues(off, 'o/r', '2026-08-24'), []);
+  const down = async () => { throw new Error('HTTP 502'); };
+  await assert.rejects(closedIssues(down, 'o/r', '2026-08-24'), /502/);
+  const ok = async () => JSON.stringify([{ closedAt: '2026-09-01T00:00:00Z' }]);
+  assert.deepEqual(await closedIssues(ok, 'o/r', '2026-08-24'), [{ closedAt: '2026-09-01T00:00:00Z' }]);
+});

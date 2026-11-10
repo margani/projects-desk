@@ -127,7 +127,9 @@ test('version id: in the page and version.json, stable on rebuild, changes with 
   const dir = await mkdtemp(path.join(tmpdir(), 'dash-ver-'));
   const status = path.join(dir, 'status');
   const out = path.join(dir, 'dist');
-  await cp(path.resolve(import.meta.dirname, '../status'), status, { recursive: true });
+  // Its own fixture: an installation's real status/ can already hold a demo.json.
+  await mkdir(status, { recursive: true });
+  await writeFile(path.join(status, 'base.json'), JSON.stringify(valid()));
   const first = await build({ statusDir: status, outDir: out, now: Date.parse('2026-10-07T08:00:00Z'), log: () => {} });
   const html = await readFile(path.join(out, 'index.html'), 'utf8');
   const file = JSON.parse(await readFile(path.join(out, 'version.json'), 'utf8'));
@@ -157,4 +159,16 @@ test('linkRefs: #N and owner/repo#N become GitHub links, everything else is esca
   // An apostrophe escapes to &#39; and must not turn into issue 39; no repo means no link.
   assert.equal(linkRefs("owner's #7", null), 'owner&#39;s #7');
   assert.equal(linkRefs('color #fff, a1#2, ##3', repo), 'color #fff, a1#2, ##3');
+});
+
+test('a build reads the usage files beside its status folder, never an installation\'s real ones', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'dash-'));
+  await mkdir(path.join(dir, 'status'), { recursive: true });
+  await mkdir(path.join(dir, 'usage'), { recursive: true });
+  await writeFile(path.join(dir, 'status/base.json'), JSON.stringify(valid()));
+  await writeFile(path.join(dir, 'usage/claude.json'), 'not json');
+  const log = [];
+  await build({ statusDir: path.join(dir, 'status'), outDir: path.join(dir, 'dist'), log: (l) => log.push(l) });
+  assert.ok(log.length > 0);
+  assert.ok(log.some((l) => /Claude usage file/.test(l)), log.join('\n'));
 });

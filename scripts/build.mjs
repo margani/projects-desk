@@ -10,7 +10,7 @@ import { renderSite, parseUsage, checkGithubUsage, checkStorage, checkApps, chec
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export async function build({ statusDir = path.join(root, 'status'), usageFile = path.join(root, 'usage/github.json'), storageFile = path.join(root, 'usage/storage.json'), appsFile = path.join(root, 'usage/apps.json'), claudeFile = path.join(root, 'usage/claude.json'), usersFile = path.join(root, 'usage/users.json'), outDir = path.join(root, 'dist'), now = Date.now(), log = console.log } = {}) {
+export async function build({ statusDir = path.join(root, 'status'), usageFile = path.join(statusDir, '../usage/github.json'), storageFile = path.join(statusDir, '../usage/storage.json'), appsFile = path.join(statusDir, '../usage/apps.json'), claudeFile = path.join(statusDir, '../usage/claude.json'), usersFile = path.join(statusDir, '../usage/users.json'), outDir = path.join(root, 'dist'), now = Date.now(), log = console.log } = {}) {
   const [css, js] = await Promise.all([
     readFile(path.join(root, 'src/styles.css'), 'utf8'),
     readFile(path.join(root, 'src/client.js'), 'utf8'),
