@@ -88,6 +88,11 @@ test('rc.sh: a hub whose first Remote Control connection failed is recognised, s
   assert.equal(rc('rc_disconnected demo && echo yes || echo no', { screen: promptScreen('') }), 'no');
 });
 
+test('rc.sh: boot opens the hub and every RC_KEEP_OPEN project, and one failing does not stop the rest', linuxOnly, () => {
+  const out = rc('cmd_open() { echo "open $1"; [ "$1" != files ]; }; cmd_boot; echo "exit $?"', { env: { RC_KEEP_OPEN: 'chogan files anchor' } });
+  assert.equal(out, 'open hub\nopen chogan\nopen files\nopen anchor\nexit 1');
+});
+
 test('rc.sh: only an idle session with an empty prompt may be closed', linuxOnly, () => {
   const at = Date.now();
   const sessions = {

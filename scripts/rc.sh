@@ -13,6 +13,8 @@
 #   rc.sh open --resume <project> resume its last conversation instead
 #   rc.sh close <project>         /exit it; refuses while it is working
 #   rc.sh close --force <project> close it even while it is working
+#   rc.sh boot                    open the hub and every project in RC_KEEP_OPEN
+#                                 (what the login/boot unit runs)
 #   rc.sh close-idle              close every project idle RC_IDLE_HOURS (24),
 #                                 except those in RC_KEEP_OPEN
 #
@@ -262,7 +264,18 @@ cmd_close_idle() {
   echo "closed $closed, kept $kept (limit ${IDLE_HOURS}h)"
 }
 
+# After a restart every session is gone, and the projects in RC_KEEP_OPEN are
+# the ones that must not be closed, so they come back with the hub. One failing
+# does not stop the others (2026-11-10: only the hub came back).
+cmd_boot() {
+  local rc=0 p
+  cmd_open hub || rc=1
+  for p in $KEEP_OPEN; do cmd_open "$p" || rc=1; done
+  return $rc
+}
+
 case "${1:-}" in
+  boot) cmd_boot ;;
   list) cmd_list ;;
   open) shift; cmd_open "$@" ;;
   close) shift; cmd_close "$@" ;;
