@@ -9,13 +9,13 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=@REPO@/scripts/rc.sh open hub
+ExecStart=@REPO@/scripts/rc.sh boot
 # claude, tmux and jq must be found.
 Environment=PATH=@PATH@
 # The tmux server and every session in it outlive this unit: stopping or
 # restarting the unit must never kill the open sessions.
 KillMode=process
-TimeoutStartSec=4min
+TimeoutStartSec=10min
 
 [Install]
 WantedBy=default.target
