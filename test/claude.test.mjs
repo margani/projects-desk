@@ -97,7 +97,7 @@ test('claude: transcripts are read once, one line per request, by project and mo
   assert.deepEqual(week.models.map((m) => m.name), ['Fable 5.1', 'Opus 5.5']);
 
   // The unfinished line is read once it is finished; nothing else twice.
-  await appendFile(f1, ':{"input_tokens":0,"output_tokens":500},"model":"claude-opus-5-5"},"timestamp":"2026-11-04T09:40:00Z","cwd":"' + home + '/projects/personal/orion"}\n');
+  await appendFile(f1, ':{"input_tokens":0,"output_tokens":500},"model":"claude-opus-5-5"},"timestamp":"2026-11-04T09:40:00Z","cwd":' + JSON.stringify(`${home}/projects/personal/orion`) + '}\n');
   const again = await scanTranscripts({ dir, home, state: first.state, now });
   assert.equal(again.lines, 1);
   assert.equal(summariseUse(again.state.hours, 0, now + 1).projects.find((p) => p.name === 'orion').output, 2500);

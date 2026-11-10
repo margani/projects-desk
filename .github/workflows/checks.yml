@@ -30,6 +30,10 @@ jobs:
       - run: npm ci
       # The same command Workers Builds runs before it deploys.
       - run: npm run ci
+      # A script whose main check never matches exits 0 having done nothing.
+      - name: The build really wrote its files
+        shell: bash
+        run: test -s dist/inline.mjs && test -s dist/manifest.webmanifest
 
       # Autostart for real, from the shell the setup guide uses on each system.
       - name: Install, check and remove autostart (Windows)
@@ -38,14 +42,24 @@ jobs:
         run: |
           npm.cmd run autostart
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          node scripts/watch.mjs --status
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $startup = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\projects-desk.cmd'
+          if (-not (Test-Path $startup)) { Write-Error 'no Startup file'; exit 1 }
+          $status = node scripts/watch.mjs --status
+          $status
+          if (-not ($status -cmatch '^Running')) { Write-Error 'the watcher is not running'; exit 1 }
           npm.cmd run autostart -- --remove
-          exit $LASTEXITCODE
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (Test-Path $startup) { Write-Error 'the Startup file is still there'; exit 1 }
+          $status = node scripts/watch.mjs --status
+          $status
+          if (-not ($status -cmatch '^Not running')) { Write-Error 'the watcher is still running'; exit 1 }
       - name: Install, check and remove autostart (macOS)
         if: runner.os == 'macOS'
         run: |
           npm run autostart
           sleep 3
-          node scripts/watch.mjs --status
+          node scripts/watch.mjs --status | tee status.txt
+          grep -q '^Running' status.txt
           npm run autostart -- --remove
+          node scripts/watch.mjs --status | tee status.txt
+          grep -q '^Not running' status.txt

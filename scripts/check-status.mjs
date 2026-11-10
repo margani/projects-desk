@@ -5,6 +5,7 @@
 // hours because one file had six next steps.
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadStatus } from './lib/schema.mjs';
 
 export async function checkStatusDir(dir) {
@@ -17,7 +18,7 @@ export async function checkStatusDir(dir) {
   return { checked: files.length, invalid };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const dir = path.resolve(process.argv[2] ?? 'status');
   const { checked, invalid } = await checkStatusDir(dir);
   if (checked === 0) {

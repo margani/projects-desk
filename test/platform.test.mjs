@@ -34,6 +34,13 @@ test('every child process hides its console window, or Windows flashes one each 
   assert.deepEqual(spawners.filter((f) => !read(f).includes('windowsHide')), []);
 });
 
+test('no script builds its own file:// address, which never matches on Windows and silently skips the script', () => {
+  const dirs = ['scripts', 'scripts/lib', 'bin'];
+  const files = dirs.flatMap((d) => readdirSync(path.join(root, d)).filter((f) => f.endsWith('.mjs')).map((f) => `${d}/${f}`));
+  assert.ok(files.length >= 20, `found ${files.length}`);
+  assert.deepEqual(files.filter((f) => read(f).includes('`file://')), []);
+});
+
 test('storage run: hidden on every system, and detached only where process groups exist', async () => {
   let seen;
   const execFileImpl = (file, args, options, done) => { seen = { file, options }; setImmediate(done, null, 'ok', ''); return { pid: 1 }; };
