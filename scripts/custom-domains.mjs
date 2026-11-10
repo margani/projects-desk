@@ -1,5 +1,5 @@
 // Prints the Worker's custom domains from wrangler.jsonc, one per line.
-// scripts/deploy.sh checks each of them for the Access login after a deploy
+// scripts/lib/deploy.mjs checks each of them for the Access login after a deploy
 //: checking only one would let a second domain added without Access serve
 // the private page publicly and still pass.
 import { readFile } from 'node:fs/promises';

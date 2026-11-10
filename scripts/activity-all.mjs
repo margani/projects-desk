@@ -5,7 +5,7 @@
 // (scripts/install-watcher.sh); logs: journalctl --user -u projects-dashboard-activity
 //
 // A project's checkout is found by matching its repo_url against the origin of
-// every git repo under ~/projects (or ACTIVITY_ROOTS, colon-separated).
+// every git repo under ~/projects (or ACTIVITY_ROOTS, separated like PATH).
 // Per-project options live in activity.config.json.
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { githubSlug } from './lib/activity.mjs';
-import { collectActivity, summarize, applyActivity } from './lib/collect.mjs';
+import { collectActivity, summarize, applyActivity, activityRoots } from './lib/collect.mjs';
 import { CURRENT_SCHEMA_VERSION } from './lib/schema.mjs';
 import { readOptionalConfig } from './lib/config.mjs';
 
@@ -22,7 +22,7 @@ const run = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // ACTIVITY_STATUS_DIR points a trial run at a copy instead of the real files.
 const statusDir = process.env.ACTIVITY_STATUS_DIR ?? path.join(root, 'status');
-const roots = (process.env.ACTIVITY_ROOTS ?? path.join(homedir(), 'projects')).split(':');
+const roots = activityRoots(process.env.ACTIVITY_ROOTS, homedir());
 
 /** origin slug (lower case) → checkout path, for git repos up to three levels down. */
 async function findCheckouts(dir, depth, found) {
@@ -30,7 +30,7 @@ async function findCheckouts(dir, depth, found) {
   try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
   if (entries.some((e) => e.name === '.git')) {
     try {
-      const url = (await run('git', ['-C', dir, 'remote', 'get-url', 'origin'])).stdout;
+      const url = (await run('git', ['-C', dir, 'remote', 'get-url', 'origin'], { windowsHide: true })).stdout;
       const slug = githubSlug(url)?.toLowerCase();
       // The first checkout found wins; a second clone (e.g. atlas-test) is ignored.
       if (slug && !found.has(slug)) found.set(slug, dir);

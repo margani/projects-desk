@@ -35,7 +35,7 @@ fi
 WITH_SESSIONS=0
 if [[ "${1:-}" == "--with-sessions" ]]; then WITH_SESSIONS=1; UNITS+=("${SESSION_UNITS[@]}"); fi
 
-required=(git flock systemctl node gh curl jq)
+required=(git flock systemctl node gh)
 (( WITH_SESSIONS )) && required+=(tmux claude)
 for cmd in "${required[@]}"; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 1; }

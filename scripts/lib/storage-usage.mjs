@@ -6,8 +6,11 @@
 // Only aggregate numbers leave this module: sizes, counts and the names of
 // disks, remotes, databases and buckets. Never file names, paths inside a
 // drive, tokens or account emails.
-import './repo-bin.mjs';
+import { launch } from './repo-bin.mjs';
 import { execFile } from 'node:child_process';
+import { statfs as statfsAsync } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 
 const GB = 1e9;
 const TB = 1e12;
@@ -42,7 +45,10 @@ export const TIMEOUTS = { df: 15_000, ssh: 25_000, rclone: 45_000, cloudflare: 3
 export function run(cmd, args, { timeout, execFileImpl = execFile }) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const child = execFileImpl(cmd, args, { maxBuffer: 16 * 1024 * 1024, detached: true }, (err, stdout, stderr) => {
+    const [file, argv] = launch(cmd, args);
+    // Not detached on Windows: it would give every call its own console window.
+    const options = { maxBuffer: 16 * 1024 * 1024, detached: process.platform !== 'win32', windowsHide: true };
+    const child = execFileImpl(file, argv, options, (err, stdout, stderr) => {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
@@ -269,9 +275,30 @@ async function r2Stats(id, now, exec) {
   return body.data?.viewer?.accounts?.[0]?.r2StorageAdaptiveGroups ?? [];
 }
 
+/** One row per path in `paths` (default: the home folder's drive), from statfs. */
+async function statfsRows(src, { home, statfs, platform }) {
+  const rows = [];
+  for (const given of src.paths ?? [home]) {
+    const target = given.replace(/^~(?=[\\/]|$)/, home);
+    const name = (platform === 'win32' ? path.win32 : path.posix).parse(target).root || target;
+    try {
+      const { bsize, blocks, bfree, bavail } = await statfs(target);
+      const total = bsize * blocks;
+      const used = bsize * (blocks - bfree);
+      const free = bsize * bavail;
+      rows.push({ group: src.name, name, kind: 'disk', total, used, free, trashed: null, percent: used + free > 0 ? (used / (used + free)) * 100 : null, problem: null });
+    } catch (err) {
+      rows.push(...failed(src.name, [name], 'disk', explain(err, 'statfs')));
+    }
+  }
+  return rows;
+}
+
 /** Each source kind: config entry → rows. Throws only for programming errors. */
 const COLLECTORS = {
-  async local(src, { exec, home }) {
+  async local(src, { exec, home, platform, statfs }) {
+    // `df --output` is GNU only, so Windows and macOS ask the filesystem directly.
+    if (platform !== 'linux') return statfsRows(src, { home, statfs, platform });
     const exclude = (src.exclude_under ?? []).map((d) => d.replace(/^~(?=\/|$)/, home));
     // df stats every mount, and an rclone mount whose remote hangs blocks it past the
     // timeout: on 2026-11-05 that hid every laptop disk for two days. Those
@@ -355,13 +382,13 @@ function disabledRows(src) {
  * Every source in storage-usage.config.json, in parallel. A source that
  * fails becomes rows with a `problem`; the others are unaffected.
  */
-export async function collectStorage(sources, { now = Date.now(), exec = run, home = process.env.HOME ?? '' } = {}) {
+export async function collectStorage(sources, { now = Date.now(), exec = run, home = homedir(), platform = process.platform, statfs = statfsAsync } = {}) {
   const groups = await Promise.all(sources.map(async (src) => {
     if (src.enabled === false) return disabledRows(src);
     const collect = COLLECTORS[src.kind];
     if (!collect) return failed(src.name, [src.name], src.kind, `unknown source kind "${src.kind}"`);
     try {
-      return await collect(src, { exec, now, home });
+      return await collect(src, { exec, now, home, platform, statfs });
     } catch (err) {
       return failed(src.name, [src.name], src.kind, explain(err, src.kind));
     }

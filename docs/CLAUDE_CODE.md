@@ -2,7 +2,7 @@
 
 Add the section below to your global `~/.claude/CLAUDE.md`, so that every
 project's session keeps its status file current. Replace the path with where
-you cloned this repository.
+you cloned this repository. On Windows, `~` is your user folder.
 
 ````markdown
 ## Project status JSON (for my dashboard)

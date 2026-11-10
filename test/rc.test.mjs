@@ -8,8 +8,11 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, chmodSync, mkdirSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const RC = new URL('../scripts/rc.sh', import.meta.url).pathname;
+const RC = fileURLToPath(new URL('../scripts/rc.sh', import.meta.url));
+// tmux sessions are the one part with no Windows or macOS version.
+const linuxOnly = { skip: process.platform !== 'linux' && 'tmux sessions are Linux only' };
 const ESC = '\x1b';
 
 // Runs `snippet` with rc.sh's functions loaded (everything before the
@@ -72,14 +75,14 @@ ${snippet}`;
 
 const promptScreen = (line) => `some output\n${'─'.repeat(20)}\n${ESC}[39m❯ ${line}\n${'─'.repeat(20)}\n  ⏵⏵ auto mode on\n`;
 
-test('rc.sh: a dim placeholder or suggestion in the prompt is not a draft; typed text is', () => {
+test('rc.sh: a dim placeholder or suggestion in the prompt is not a draft; typed text is', linuxOnly, () => {
   assert.equal(rc('draft demo', { screen: promptScreen(`${ESC}[2mTry "refactor <filepath>"${ESC}[0m`) }), '');
   assert.equal(rc('draft demo', { screen: promptScreen(`${ESC}[2m/wrap${ESC}[0m`) }), '');
   assert.equal(rc('draft demo', { screen: promptScreen('') }), '');
   assert.equal(rc('draft demo', { screen: promptScreen('half a message') }), 'halfamessage');
 });
 
-test('rc.sh: only an idle session with an empty prompt may be closed', () => {
+test('rc.sh: only an idle session with an empty prompt may be closed', linuxOnly, () => {
   const at = Date.now();
   const sessions = {
     101: { status: 'idle', statusUpdatedAt: at },
@@ -97,13 +100,13 @@ test('rc.sh: only an idle session with an empty prompt may be closed', () => {
   assert.match(rc('working 999 demo', { screen: empty, sessions }), /status unknown/);
 });
 
-test('rc.sh: idle hours come from the last status change; the limit is 24 hours', () => {
+test('rc.sh: idle hours come from the last status change; the limit is 24 hours', linuxOnly, () => {
   const sessions = { 201: { status: 'idle', statusUpdatedAt: Date.now() - 73 * 3600 * 1000 } };
   assert.equal(rc('idle_hours 201', { sessions }), '73');
   assert.equal(rc('echo "$IDLE_HOURS"'), '24', 'the default');
 });
 
-test('rc.sh: nothing is kept open by default, and RC_KEEP_OPEN names whole projects', () => {
+test('rc.sh: nothing is kept open by default, and RC_KEEP_OPEN names whole projects', linuxOnly, () => {
   assert.equal(rc('echo "[$KEEP_OPEN]"'), '[]');
   const env = { RC_KEEP_OPEN: 'orion notes' };
   assert.equal(rc('keep_open orion && echo keep || echo close', { env }), 'keep');
@@ -111,7 +114,7 @@ test('rc.sh: nothing is kept open by default, and RC_KEEP_OPEN names whole proje
   assert.equal(rc('keep_open ori && echo keep || echo close', { env }), 'close', 'whole names only');
 });
 
-test('rc.sh: a project has a status file or earlier conversations; open also takes a new repo', () => {
+test('rc.sh: a project has a status file or earlier conversations; open also takes a new repo', linuxOnly, () => {
   const folders = {
     withstatus: ['status'],
     talked: ['conversation'], // an empty folder, but worked on
@@ -137,7 +140,7 @@ test('rc.sh: a project has a status file or earlier conversations; open also tak
 // Resumed sessions with long histories re-read hundreds of thousands of
 // cached tokens on every turn, so a project now opens a fresh conversation;
 // its CLAUDE.md, memory and status file give it context.
-test('rc-session.sh: starts a new conversation unless RC_RESUME=1 asks to resume the last one', () => {
+test('rc-session.sh: starts a new conversation unless RC_RESUME=1 asks to resume the last one', linuxOnly, () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'rc-fresh-')));
   const work = join(dir, 'work');
   mkdirSync(work);
@@ -156,7 +159,7 @@ test('rc-session.sh: starts a new conversation unless RC_RESUME=1 asks to resume
   assert.match(resumed.stdout, /--resume abc123 --remote-control=demo /);
 });
 
-test('rc.sh: open starts fresh; open --resume passes RC_RESUME=1 to the window', () => {
+test('rc.sh: open starts fresh; open --resume passes RC_RESUME=1 to the window', linuxOnly, () => {
   const fresh = rc(`session_cmd demo ''`, {});
   assert.doesNotMatch(fresh, /RC_RESUME/);
   assert.match(fresh, /rc-session\.sh demo --permission-mode/);

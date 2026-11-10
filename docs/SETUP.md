@@ -17,13 +17,17 @@ order. Those files are the source of truth, so do not rely on memory for any
 step.
 
 Before you start:
-- Check that this is Linux with a systemd user session, and that node, git, gh
-  (logged in), curl, jq and flock are installed.
+- Find out which system this is: Windows, macOS or Linux. On Windows use
+  PowerShell, not WSL or bash. Check that node (22 or newer), git and gh (logged
+  in) are installed, and install what is missing with the commands in step 1.
+- On Windows always write npm.cmd and npx.cmd, because plain npm and npx start
+  .ps1 scripts that Windows blocks by default. Do not change the execution
+  policy.
 - Ask me once for everything you need: the hostname to use, which must be on a
   domain in my Cloudflare account, and the email address allowed to sign in.
 - Ask which optional features I want: GitHub usage, the Storage tab, user
-  numbers, Claude Code sessions on demand, deploying on every push. Leave the
-  Claude usage tab off unless I ask for it, and if I do, show me the warning
+  numbers, deploying on every push, and on Linux only, Claude Code sessions on
+  demand. Leave the Claude usage tab off unless I ask for it, and if I do, show me the warning
   about it in README.md first.
 
 Do every step you can yourself. Stop and give me exact instructions, from
@@ -32,7 +36,7 @@ Access application, and creating the API tokens.
 
 Rules:
 - The Access application must exist before the first deploy. Confirm with me
-  that it is saved before you run npm run deploy.
+  that it is saved before you deploy (step 5).
 - Never ask me to paste a token into this chat, and never print one. I save
   tokens myself, in a separate terminal, with the commands in step 6.
 - Never turn on workers_dev or preview_urls.
@@ -41,8 +45,9 @@ Rules:
 
 When you finish, prove it worked, and tell me about anything that failed:
 - npm run deploy passed its check that the domain redirects to Access.
-- bin/cfapi GET /user/tokens/verify succeeds.
-- systemctl --user list-timers shows the projects-dashboard timers.
+- node bin/cfapi.mjs GET /user/tokens/verify succeeds.
+- The watcher runs: node scripts/watch.mjs --status on Windows and macOS, or
+  systemctl --user list-timers showing the projects-dashboard timers on Linux.
 - A status file you write for this project reaches D1. It should be on the page
   about half a minute later, and I will sign in and confirm that I can see it.
 ```
@@ -58,7 +63,43 @@ answers on it.
 The Cloudflare steps below were checked against Cloudflare's documentation in
 November 2026. Dashboard labels change, so each step links its source.
 
+The commands work on Windows, macOS and Linux. Where they differ there is a
+PowerShell block for Windows and a shell block for the others. Windows needs no
+WSL, no bash and no change to the execution policy. PowerShell blocks `.ps1`
+scripts by default, and plain `npm` is one, so on Windows always write `npm.cmd`
+and `npx.cmd`.
+
 ## 1. Install
+
+First install Node.js 22 or newer, Git and the GitHub CLI.
+
+On Windows, in PowerShell:
+
+```powershell
+winget install --id OpenJS.NodeJS.LTS -e --source winget
+winget install --id Git.Git -e --source winget
+winget install --id GitHub.cli --source winget
+```
+
+Then close PowerShell and open a new window, because a new tab does not see the
+updated `PATH`.
+
+On macOS, with [Homebrew](https://brew.sh/):
+
+```sh
+brew install node git gh
+```
+
+On Linux, use your distribution's packages. The watcher also needs `curl`, `jq`,
+`flock` and a systemd user session.
+
+Log in to GitHub with `gh auth login`. Then, in the clone:
+
+```powershell
+npm.cmd install
+npx.cmd wrangler login
+npx.cmd wrangler whoami   # shows your account id
+```
 
 ```sh
 npm install
@@ -73,15 +114,24 @@ require one. Use a hostname with no existing CNAME record, for example
 
 ## 2. Create the database
 
+```powershell
+npx.cmd wrangler d1 create projects-desk
+npx.cmd wrangler d1 execute projects-desk --remote --file=./schema.sql
+```
+
 ```sh
 npx wrangler d1 create projects-desk
 npx wrangler d1 execute projects-desk --remote --file=./schema.sql
 ```
 
-The first command prints the database id. `npx wrangler d1 list` shows it again.
+The first command prints the database id. `wrangler d1 list` shows it again.
 See [Getting started with D1](https://developers.cloudflare.com/d1/get-started/).
 
 ## 3. Write your config
+
+```powershell
+Copy-Item desk.config.example.json desk.config.json
+```
 
 ```sh
 cp desk.config.example.json desk.config.json
@@ -117,6 +167,10 @@ so that no `*.workers.dev` address can bypass Access, as
 Do not turn them on.
 
 ## 5. Deploy
+
+```powershell
+npm.cmd run deploy
+```
 
 ```sh
 npm run deploy
@@ -171,19 +225,45 @@ Add these to the read token only if you use the feature
 | R2 sizes on Storage | Workers R2 Storage Read, Account Analytics Read |
 | D1 limits on Storage | Billing Read. Without it the D1 row shows sizes and the note "plan unknown, so no limit to compare with". |
 
-Save each token without leaving it in your shell history:
+Save each token without leaving it in your shell history. This is the same on
+every system: run a command, paste the token, press Enter.
 
-```sh
-mkdir -p ~/.config/cloudflare
-( umask 077; cat > ~/.config/cloudflare/edit.token )   # paste, Enter, Ctrl-D
-( umask 077; cat > ~/.config/cloudflare/read.token )   # paste, Enter, Ctrl-D
-bin/cfapi GET /user/tokens/verify
+```text
+node bin/cfapi.mjs --save edit
+node bin/cfapi.mjs --save read
+node bin/cfapi.mjs GET /user/tokens/verify
 ```
 
-`bin/cfapi` is the helper every script uses. It never prints a token. Without
-the files it falls back to the `CLOUDFLARE_API_TOKEN` environment variable.
+On Windows the files are in `%USERPROFILE%\.config\cloudflare\`. `bin/cfapi.mjs`
+is the helper every script uses. It never prints a token. Without the files it
+falls back to the `CLOUDFLARE_API_TOKEN` environment variable.
 
 ## 7. Install the watcher and timers
+
+On Windows and macOS:
+
+```text
+node scripts/install-autostart.mjs
+node scripts/watch.mjs --status
+```
+
+This starts one small background program, now and at every login: a `.cmd` file
+in your Startup folder on Windows, a LaunchAgent on macOS. Neither needs an
+administrator. It does the jobs in the table below, and catches up on a daily
+job when the computer was off at its time. A failed publish loses nothing, and
+you get one desktop notice per outage, after about 30 minutes.
+
+| Command | What it does |
+|---|---|
+| `node scripts/watch.mjs --status` | Says whether it is running, and when each job last ran. |
+| `node scripts/watch.mjs --stop` | Stops it until the next login. |
+| `node scripts/watch.mjs --once` | Publishes the status files now, and shows the result. |
+| `node scripts/install-autostart.mjs --remove` | Stops it and removes it from login. |
+
+Its log is `watch.log` in `~/.local/state/projects-dashboard`, or on Windows
+`%USERPROFILE%\.local\state\projects-dashboard`.
+
+On Linux:
 
 ```sh
 scripts/install-watcher.sh
@@ -223,10 +303,18 @@ which git ignores.
 | `users.config.example.json` | Each project's user numbers, read from its own D1 database. |
 | `activity.config.example.json` | Per-project exclusions for the activity numbers. |
 
-The activity timer finds each project's checkout under `~/projects`. Set
-`ACTIVITY_ROOTS` (colon-separated) for other locations.
+The activity job finds each project's checkout under `~/projects`. Set
+`ACTIVITY_ROOTS` for other locations, separated by `;` on Windows and `:`
+elsewhere.
+
+On Windows and macOS, the Storage tab's `local` source shows the disk holding
+each path you list, read through Node. An `ssh` or `rclone` source needs that
+program installed.
 
 ### Claude Code sessions on demand
+
+This one is Linux only, because it is built on tmux and systemd. Everything else
+works on all three systems.
 
 ```sh
 scripts/install-watcher.sh --with-sessions   # also needs tmux and claude

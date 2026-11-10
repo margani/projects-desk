@@ -12,7 +12,12 @@ concurrency:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # The computer side has to work on all three, without WSL on Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -25,3 +30,22 @@ jobs:
       - run: npm ci
       # The same command Workers Builds runs before it deploys.
       - run: npm run ci
+
+      # Autostart for real, from the shell the setup guide uses on each system.
+      - name: Install, check and remove autostart (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          npm.cmd run autostart
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          node scripts/watch.mjs --status
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          npm.cmd run autostart -- --remove
+          exit $LASTEXITCODE
+      - name: Install, check and remove autostart (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          npm run autostart
+          sleep 3
+          node scripts/watch.mjs --status
+          npm run autostart -- --remove

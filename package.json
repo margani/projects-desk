@@ -6,13 +6,15 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",
     "test": "node --test test/*.test.mjs",
-    "deploy": "npm run build && bash scripts/deploy.sh",
+    "deploy": "npm run build && node scripts/deploy.mjs",
+    "watch": "node scripts/watch.mjs",
+    "autostart": "node scripts/install-autostart.mjs",
     "ci": "npm test && npm run build"
   },
   "devDependencies": {

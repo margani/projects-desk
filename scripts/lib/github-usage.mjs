@@ -90,7 +90,7 @@ export function summarise(items, { plan, now, visibility = new Map() }) {
 }
 
 async function gh(args) {
-  const { stdout } = await run('gh', ['api', ...args], { timeout: 30_000 });
+  const { stdout } = await run('gh', ['api', ...args], { timeout: 30_000, windowsHide: true });
   return JSON.parse(stdout);
 }
 

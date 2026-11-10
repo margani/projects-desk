@@ -189,13 +189,13 @@ test('storage: the laptop df skips the rclone mounts, so a remote that hangs can
   assert.ok(laptop.length > 0);
   const answer = async (cmd, args, opts) => (cmd === 'df' && args.includes('fuse.rclone') && args[args.indexOf('fuse.rclone') - 1] === '-x')
     ? { stdout: LAPTOP_DF } : exec(cmd, args, opts);
-  const rows = (await collectStorage(laptop, { now, exec: answer, home: '/home/user' })).sources;
+  const rows = (await collectStorage(laptop, { now, platform: 'linux', exec: answer, home: '/home/user', platform: 'linux' })).sources;
   assert.ok(rows.length > 0);
   assert.equal(rows.find((r) => r.name === '/').used, 710546014208);
   assert.ok(rows.every((r) => !r.problem), JSON.stringify(rows));
   assert.equal(calls.length, 0, 'df was called without -x fuse.rclone');
   // A type that is not a plain name never reaches df's arguments.
-  const bad = await collectStorage([{ name: 'L', kind: 'local', skip_types: ['fuse.rclone; rm'] }], { now, exec: answer, home: '/home/user' });
+  const bad = await collectStorage([{ name: 'L', kind: 'local', skip_types: ['fuse.rclone; rm'] }], { now, platform: 'linux', exec: answer, home: '/home/user', platform: 'linux' });
   assert.match(bad.sources[0].problem, /skip_types/);
 });
 
@@ -206,7 +206,7 @@ test('storage: one failed source keeps its rows with the problem, and every othe
   });
   const { exec, calls } = fakeExec({ 'ssh ': timedOut, 'about my-onedrive:': expired });
   const sources = [...CONFIG, { name: 'Dropbox', kind: 'rclone', kind_label: 'Dropbox', enabled: false, note: 'not connected — needs a sign-in', remotes: [{ remote: 'dropbox', name: 'Dropbox' }] }];
-  const out = await collectStorage(sources, { now, exec, home: '/home/user' });
+  const out = await collectStorage(sources, { now, exec, home: '/home/user', platform: 'linux' });
   assert.equal(out.generated_at, '2026-10-20T12:00:00Z');
   const rows = out.sources;
   assert.ok(rows.length > 0);
@@ -246,7 +246,7 @@ test('storage: a Cloudflare error and an offline host become one line each', asy
     code: 1, stdout: JSON.stringify({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }),
   });
   const { exec } = fakeExec({ '/d1/database': denied, 'ssh ': Object.assign(new Error('Command failed: ssh'), { code: 255, stderr: 'ssh: connect to host homeserver port 22: No route to host\r\n' }) });
-  const rows = (await collectStorage(CONFIG, { now, exec, home: '/home/user' })).sources;
+  const rows = (await collectStorage(CONFIG, { now, exec, home: '/home/user', platform: 'linux' })).sources;
   const d1 = rows.filter((r) => r.group === 'Cloudflare D1');
   assert.equal(d1.length, 2);
   for (const r of d1) assert.equal(r.problem, 'Cloudflare API: 10000: Authentication error');
