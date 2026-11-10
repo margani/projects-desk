@@ -104,6 +104,12 @@ draft() {
     sed 's/\x1b\[2m[^\x1b]*\x1b\[\(0\|22\)m//g; s/\x1b\[[0-9;]*m//g' |
     grep '^❯' | tail -n1 | sed 's/^❯//; s/[[:space:]\xc2\xa0]//g'
 }
+# Claude Code gives up for good when its first Remote Control connection fails
+# ("Session creation failed ... run /remote-control to reconnect"). Right after
+# a boot the network is often not usable yet although network-online.target
+# was reached, and the hub then stayed disconnected until someone typed
+# /remote-control by hand (2026-11-10).
+rc_disconnected() { tmux capture-pane -p -t "$(window_of "$1")" 2>/dev/null | grep -q 'run /remote-control to reconnect'; }
 trust_prompt() { tmux capture-pane -p -t "$(window_of "$1")" 2>/dev/null | grep -q 'trust this folder'; }
 
 # Why a session must not be closed now ("" when it may be).
@@ -178,7 +184,8 @@ cmd_open() {
   else
     tmux new-session -d -s "$SESSION" -n "$p" -c "$dir" "$run"
   fi
-  for _ in $(seq 60); do
+  local retried=-20
+  for t in $(seq 150); do
     sleep 1
     if trust_prompt "$p"; then
       echo "$p is waiting at Claude Code's \"trust this folder\" prompt; answer it in tmux window $SESSION:$p" >&2
@@ -189,8 +196,14 @@ cmd_open() {
       echo "$p is open: $(info "$pid" '.name // "-"') (Remote Control connected)"
       return 0
     fi
+    # Reconnect at most every 20 s, while the screen says the connection failed.
+    if [ $((t - retried)) -ge 20 ] && rc_disconnected "$p"; then
+      retried=$t
+      echo "$p: Remote Control failed to connect; asking it to reconnect" >&2
+      tmux send-keys -t "$(window_of "$p")" '/remote-control' Enter
+    fi
   done
-  echo "$p did not connect to Remote Control within 60 s; see tmux window $SESSION:$p" >&2
+  echo "$p did not connect to Remote Control within 150 s; see tmux window $SESSION:$p" >&2
   return 1
 }
 

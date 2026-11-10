@@ -15,7 +15,7 @@ Environment=PATH=@PATH@
 # The tmux server and every session in it outlive this unit: stopping or
 # restarting the unit must never kill the open sessions.
 KillMode=process
-TimeoutStartSec=2min
+TimeoutStartSec=4min
 
 [Install]
 WantedBy=default.target
