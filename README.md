@@ -62,7 +62,8 @@ npm run dev   # http://localhost:8787, an empty dashboard from local files
 ```
 
 Then follow [docs/SETUP.md](docs/SETUP.md) to create the database, protect the
-domain, deploy and install the watcher. After that,
+domain, deploy and install the watcher. It starts with a prompt you can give
+Claude Code to do this for you. After that,
 [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md) has the text that tells your Claude
 Code sessions to write their status files.
 

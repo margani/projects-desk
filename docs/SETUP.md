@@ -1,5 +1,56 @@
 # Setup
 
+## Let Claude Code do it
+
+Paste this prompt into [Claude Code](https://code.claude.com/docs). It does the
+install and stops only for the few things that need you in a browser: signing
+in to Cloudflare, creating the Access application, and creating two API tokens.
+
+```text
+Install projects-desk for me on this computer, a private dashboard of my
+projects.
+
+If this folder is not already a clone of it, clone
+https://github.com/margani/projects-desk into ~/projects/projects-desk and work
+there. Read docs/SETUP.md and README.md first, and follow docs/SETUP.md in
+order. Those files are the source of truth, so do not rely on memory for any
+step.
+
+Before you start:
+- Check that this is Linux with a systemd user session, and that node, git, gh
+  (logged in), curl, jq and flock are installed.
+- Ask me once for everything you need: the hostname to use, which must be on a
+  domain in my Cloudflare account, and the email address allowed to sign in.
+- Ask which optional features I want: GitHub usage, the Storage tab, user
+  numbers, Claude Code sessions on demand, deploying on every push. Leave the
+  Claude usage tab off unless I ask for it, and if I do, show me the warning
+  about it in README.md first.
+
+Do every step you can yourself. Stop and give me exact instructions, from
+docs/SETUP.md, only for what needs me: logging in with wrangler, creating the
+Access application, and creating the API tokens.
+
+Rules:
+- The Access application must exist before the first deploy. Confirm with me
+  that it is saved before you run npm run deploy.
+- Never ask me to paste a token into this chat, and never print one. I save
+  tokens myself, in a separate terminal, with the commands in step 6.
+- Never turn on workers_dev or preview_urls.
+- Before you add the section from docs/CLAUDE_CODE.md to my ~/.claude/CLAUDE.md,
+  show me the text you will add, with the real path to this clone.
+
+When you finish, prove it worked, and tell me about anything that failed:
+- npm run deploy passed its check that the domain redirects to Access.
+- bin/cfapi GET /user/tokens/verify succeeds.
+- systemctl --user list-timers shows the projects-dashboard timers.
+- A status file you write for this project reaches D1. It should be on the page
+  about half a minute later, and I will sign in and confirm that I can see it.
+```
+
+If you would rather do it yourself, carry on below.
+
+## Do it yourself
+
 This takes you from a fresh clone to a private dashboard on your own domain. Do
 the steps in order: the domain is protected by Access **before** the Worker
 answers on it.
