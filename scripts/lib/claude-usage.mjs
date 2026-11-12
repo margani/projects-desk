@@ -418,13 +418,28 @@ export function addSample(history = [], limits, now) {
  */
 /**
  * `model` and CLAUDE_CODE_SUBAGENT_MODEL for each project folder under
- * ~/projects/<group>/<name>: .claude/settings.json, then
- * settings.local.json on top, as Claude Code merges them. The time is the
- * mtime of the file that sets the value, the best "since" there is.
+ * ~/projects/<group>/<name>. Claude Code merges the user-level
+ * ~/.claude/settings.json, then the project's .claude/settings.json, then
+ * settings.local.json on top; so does this. Reading only the project files
+ * kept advising "subagents on Sonnet" for projects that the user-level
+ * setting already covered (#13). The time is the mtime of the file that sets
+ * the value, the best "since" there is.
  * Keyed like the transcripts (projectOf), so a worktree's settings do not count.
  */
 export async function readModelSettings({ home }) {
   const out = {};
+  const apply = async (s, file) => {
+    let text, st;
+    try { [text, st] = await Promise.all([readFile(file, 'utf8'), stat(file)]); } catch { return; }
+    let j;
+    try { j = JSON.parse(text); } catch { return; }
+    const at = new Date(st.mtimeMs).toISOString();
+    if (typeof j.model === 'string') { s.model = j.model; s.model_set_at = at; }
+    const sub = j.env?.CLAUDE_CODE_SUBAGENT_MODEL;
+    if (typeof sub === 'string') { s.subagent_model = sub; s.subagent_set_at = at; }
+  };
+  const user = {};
+  await apply(user, path.join(home, '.claude', 'settings.json'));
   const base = path.join(home, 'projects');
   let groups = [];
   try { groups = await readdir(base, { withFileTypes: true }); } catch { return out; }
@@ -433,18 +448,8 @@ export async function readModelSettings({ home }) {
     try { dirs = await readdir(path.join(base, g.name), { withFileTypes: true }); } catch { continue; }
     for (const d of dirs.filter((x) => x.isDirectory())) {
       const dir = path.join(base, g.name, d.name);
-      const s = {};
-      for (const f of ['settings.json', 'settings.local.json']) {
-        const file = path.join(dir, '.claude', f);
-        let text, st;
-        try { [text, st] = await Promise.all([readFile(file, 'utf8'), stat(file)]); } catch { continue; }
-        let j;
-        try { j = JSON.parse(text); } catch { continue; }
-        const at = new Date(st.mtimeMs).toISOString();
-        if (typeof j.model === 'string') { s.model = j.model; s.model_set_at = at; }
-        const sub = j.env?.CLAUDE_CODE_SUBAGENT_MODEL;
-        if (typeof sub === 'string') { s.subagent_model = sub; s.subagent_set_at = at; }
-      }
+      const s = { ...user };
+      for (const f of ['settings.json', 'settings.local.json']) await apply(s, path.join(dir, '.claude', f));
       const name = projectOf(dir, home);
       if (Object.keys(s).length && !out[name]) out[name] = s;
     }

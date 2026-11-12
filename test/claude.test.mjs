@@ -404,3 +404,17 @@ test('claude: the week by project says which model an open conversation runs now
   const html = renderClaude(u, now, [{ ok: true, data: { project: 'orion' } }]);
   assert.match(html, /<a href="#\/p\/orion">orion<\/a> <span class="repo-free"><b>now Opus 5\.5<\/b> · (Fable 5\.1|Opus 5\.5) [\d.]+% · (Fable 5\.1|Opus 5\.5) [\d.]+%<\/span>/);
 });
+
+test('claude: a user-level ~/.claude/settings.json applies to every project, and a project overrides it (#13)', async () => {
+  const { readModelSettings } = await import('../scripts/lib/claude-usage.mjs');
+  const home = await mkdtemp(path.join(tmpdir(), 'claude-user-settings-'));
+  const put = async (rel, body) => { await mkdir(path.dirname(path.join(home, rel)), { recursive: true }); await writeFile(path.join(home, rel), JSON.stringify(body)); };
+  await put('.claude/settings.json', { env: { CLAUDE_CODE_SUBAGENT_MODEL: 'sonnet' } });
+  await put('projects/personal/plain/.claude/settings.local.json', { permissions: {} });
+  await put('projects/personal/heavy/.claude/settings.local.json', { env: { CLAUDE_CODE_SUBAGENT_MODEL: 'opus' } });
+  const settings = await readModelSettings({ home });
+  assert.deepEqual(Object.keys(settings).sort(), ['heavy', 'plain']);
+  assert.equal(settings.plain.subagent_model, 'sonnet');
+  assert.match(settings.plain.subagent_set_at, /^\d{4}-\d\d-\d\dT/);
+  assert.equal(settings.heavy.subagent_model, 'opus');
+});
