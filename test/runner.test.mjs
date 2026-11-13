@@ -2,14 +2,14 @@
 // autostart files, and a real background round trip on whatever system runs this.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   JOBS, DEBOUNCE_MS, FAILURES_BEFORE_NOTICE, Runner, isDue, latestOccurrence, publishOutcome, noticeCommand,
-  notifyDesktop, acquireLock, readLock, lockHeld, stateDirFrom,
+  notifyDesktop, acquireLock, readLock, lockHeld, stateDirFrom, isAlive, isZombieStat,
 } from '../scripts/lib/runner.mjs';
 import { windowsStartupDir, windowsStartupScript, launchdPlist } from '../scripts/lib/autostart.mjs';
 
@@ -285,4 +285,29 @@ test('--once: publishes now and reports the result', () => {
   assert.match(ok.stdout, /hello/);
   assert.equal(once(2).status, 0, 'no status files yet is fine');
   assert.equal(once(1).status, 1);
+});
+
+test('isZombieStat: reads the state after the last ")" of /proc/<pid>/stat', () => {
+  assert.equal(isZombieStat('12 (node) Z 1 12 12 0'), true);
+  assert.equal(isZombieStat('12 (a) b) Z 1 12'), true);
+  assert.equal(isZombieStat('12 (node) S 1 12 12 0'), false);
+  assert.equal(isZombieStat('12 (Z) S 1 12'), false);
+  assert.equal(isZombieStat(''), false);
+});
+
+// The Workers Builds container has no init to reap orphans: a stopped
+// process stayed a zombie and `watch --stop` reported "did not stop".
+test('isAlive: a zombie is not alive', { skip: process.platform !== 'linux' }, async () => {
+  // sh backgrounds `sleep 0`, then execs a long sleep that never waits for it.
+  const parent = spawn('sh', ['-c', 'sleep 0 & echo $!; exec sleep 30'], { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+  try {
+    const pid = Number(await new Promise((resolve) => { parent.stdout.once('data', (d) => resolve(String(d).trim())); }));
+    assert.ok(pid > 0);
+    for (const end = Date.now() + 5000; Date.now() < end && !readFileSync(`/proc/${pid}/stat`, 'utf8').includes(') Z');) await new Promise((r) => { setTimeout(r, 50); });
+    assert.match(readFileSync(`/proc/${pid}/stat`, 'utf8'), /\) Z /, 'the helper process is a zombie');
+    assert.equal(isAlive(pid), false);
+  } finally {
+    parent.kill();
+  }
+  assert.equal(isAlive(process.pid), true);
 });
