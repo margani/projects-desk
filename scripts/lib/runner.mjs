@@ -264,13 +264,28 @@ export function readRunnerState(file) {
   }
 }
 
+// `state` field of /proc/<pid>/stat: "pid (comm) S ...". comm may hold ")", so
+// the state is read after the last one.
+export function isZombieStat(stat) {
+  const end = String(stat).lastIndexOf(')');
+  return end !== -1 && String(stat).slice(end + 2, end + 3) === 'Z';
+}
+
+// A zombie answers kill(pid, 0) until its parent reaps it. In the Workers
+// Builds container nothing reaps orphans, so `watch --stop` waited 10 s for a
+// stopped process and the build's test failed on every run (2026-11-13).
 export function isAlive(pid) {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (err) {
     return err.code === 'EPERM';
   }
+  try {
+    if (isZombieStat(fs.readFileSync(`/proc/${pid}/stat`, 'utf8'))) return false;
+  } catch {
+    // No /proc (macOS, Windows): the signal answer stands.
+  }
+  return true;
 }
 
 export function readLock(file) {
