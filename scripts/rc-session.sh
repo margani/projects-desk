@@ -54,10 +54,13 @@ fi
 # so a separate name starting with '-' was parsed as another claude option.
 case "$name" in -*) echo "rc-session: '$name' is not a project name" >&2; exit 64 ;; esac
 if [ -n "$latest" ]; then
-  cmd=(claude --resume "$latest" "--remote-control=$name" "$@")
+  cmd=(claude --resume "$latest" -n "$name" "--remote-control=$name" "$@")
   echo "rc-session: resuming $name conversation $latest" >&2
 else
-  cmd=(claude "--remote-control=$name" "$@")
+  # -n names the conversation itself: when the first Remote Control connection
+  # failed at boot and was retried, the web list kept a random name
+  # (hm-pc-compiled-bengio) for the hub instead of "hub" (2026-11-13).
+  cmd=(claude -n "$name" "--remote-control=$name" "$@")
   if [ -n "${RC_RESUME:-}" ]; then
     echo "rc-session: no earlier conversation for $name; starting a new one" >&2
   else

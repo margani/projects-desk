@@ -164,10 +164,10 @@ test('rc-session.sh: starts a new conversation unless RC_RESUME=1 asks to resume
   const fresh = run({});
   assert.equal(fresh.status, 0);
   assert.doesNotMatch(fresh.stdout, /--resume/);
-  assert.match(fresh.stdout, /--remote-control=demo --permission-mode auto/);
+  assert.match(fresh.stdout, /-n demo --remote-control=demo --permission-mode auto/);
   const resumed = run({ RC_RESUME: '1' });
   assert.equal(resumed.status, 0);
-  assert.match(resumed.stdout, /--resume abc123 --remote-control=demo /);
+  assert.match(resumed.stdout, /--resume abc123 -n demo --remote-control=demo /);
 });
 
 test('rc.sh: open starts fresh; open --resume passes RC_RESUME=1 to the window', linuxOnly, () => {
