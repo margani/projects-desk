@@ -35,14 +35,27 @@ export function desktopApps(entries, apps) {
   });
 }
 
+// A status file names an app as its project is named ("chogan"), so the
+// Desktop shows the first letter in upper case, the way an app is titled.
+function displayName(name) {
+  const [first = '', ...rest] = [...name];
+  return first.toUpperCase() + rest.join('');
+}
+
+// Sorted by what the user reads, not by project: a project with several apps
+// had them in its own order, so the grid was not alphabetical. The project
+// only breaks a tie, so the order is stable.
+const byName = (a, b) => displayName(a.name).localeCompare(displayName(b.name), undefined, { sensitivity: 'base', numeric: true })
+  || a.project.localeCompare(b.project);
+
 export function renderDesktop(entries, apps) {
-  const list = desktopApps(entries, apps);
+  const list = desktopApps(entries, apps).sort(byName);
   const icons = list.map((a) => {
     const who = a.name === a.project ? a.name : `${a.name} · ${a.project}`;
     return `
       <li><a class="desk-app" href="${e(a.url)}" target="_blank" rel="noopener" data-app="${e(a.id)}" title="${e(`${who} · ${new URL(a.url).host}`)}">
         <span class="desk-icon">${iconHtml(a.name, a.icon)}</span>
-        <span class="desk-name">${e(a.name)}</span>
+        <span class="desk-name">${e(displayName(a.name))}</span>
       </a></li>`;
   }).join('');
   return `

@@ -134,3 +134,18 @@ test('apps: a project can list several Desktop apps, each with its own name, add
   assert.ok(desk.includes('src="https://music.example/icon.png"'), 'the status file icon wins over the probed one');
   assert.ok(desk.includes('src="https://photos.example/i.png"'), 'without one, the probed icon is used');
 });
+
+test('Desktop: icons sorted by displayed name, names start with a capital letter', async () => {
+  const { renderDesktop } = await import('../scripts/lib/desktop-render.mjs');
+  const media = withApps('media', null, [
+    { name: 'photos', url: 'https://photos.example/' },
+    { name: 'Music', url: 'https://music.example/' },
+    { name: 'download', url: 'https://download.example/' },
+  ]);
+  const html = renderDesktop([ok(media), ok(status('chogan', 'https://chogan.example')), ok(status('Atlas', 'https://atlas.example'))], null);
+  const names = [...html.matchAll(/<span class="desk-name">([^<]*)<\/span>/g)].map((m) => m[1]);
+  assert.ok(names.length === 5, 'the list is not empty and every app is shown');
+  assert.deepEqual(names, ['Atlas', 'Chogan', 'Download', 'Music', 'Photos']);
+  assert.ok(html.includes('data-app="media/photos"'), 'the id keeps the name as written');
+  assert.ok(html.includes('<span class="desk-letter" data-c="'), 'tiles keep their letter');
+});
