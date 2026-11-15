@@ -89,8 +89,8 @@ test('rc.sh: a hub whose first Remote Control connection failed is recognised, s
 });
 
 test('rc.sh: boot opens the hub and every RC_KEEP_OPEN project, and one failing does not stop the rest', linuxOnly, () => {
-  const out = rc('cmd_open() { echo "open $1"; [ "$1" != files ]; }; cmd_boot; echo "exit $?"', { env: { RC_KEEP_OPEN: 'chogan files anchor' } });
-  assert.equal(out, 'open hub\nopen chogan\nopen files\nopen anchor\nexit 1');
+  const out = rc('cmd_open() { echo "open $1"; [ "$1" != files ]; }; cmd_boot; echo "exit $?"', { env: { RC_KEEP_OPEN: 'nova files orion' } });
+  assert.equal(out, 'open hub\nopen nova\nopen files\nopen orion\nexit 1');
 });
 
 test('rc.sh: only an idle session with an empty prompt may be closed', linuxOnly, () => {

@@ -142,10 +142,10 @@ test('Desktop: icons sorted by displayed name, names start with a capital letter
     { name: 'Music', url: 'https://music.example/' },
     { name: 'download', url: 'https://download.example/' },
   ]);
-  const html = renderDesktop([ok(media), ok(status('chogan', 'https://chogan.example')), ok(status('Atlas', 'https://atlas.example'))], null);
+  const html = renderDesktop([ok(media), ok(status('boreal', 'https://boreal.example')), ok(status('Atlas', 'https://atlas.example'))], null);
   const names = [...html.matchAll(/<span class="desk-name">([^<]*)<\/span>/g)].map((m) => m[1]);
   assert.ok(names.length === 5, 'the list is not empty and every app is shown');
-  assert.deepEqual(names, ['Atlas', 'Chogan', 'Download', 'Music', 'Photos']);
+  assert.deepEqual(names, ['Atlas', 'Boreal', 'Download', 'Music', 'Photos']);
   assert.ok(html.includes('data-app="media/photos"'), 'the id keeps the name as written');
   assert.ok(html.includes('<span class="desk-letter" data-c="'), 'tiles keep their letter');
 });
