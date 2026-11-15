@@ -167,7 +167,7 @@ export function renderClaude(usage, now, sorted = []) {
     ${head}
     <div class="usage-grid">${cards.join('')}
     </div>${advice}
-    <p class="viz-foot"><span>Limits as Claude's /usage shows them. The split by project is this laptop's Claude Code sessions, weighed by API list price so a Fable token counts more than an Opus one; Chats and Cowork are not in it.</span><span>Read ${rel(usage.read_at ?? usage.generated_at, now)}</span></p>
+    <p class="viz-foot"><span>Limits as Claude's /usage shows them. The split by project is this laptop's Claude Code sessions, weighed by API list price so a Fable token counts more than an Opus one; Chats and Cowork are not in it.</span><span>Read ${rel(usage.read_at ?? usage.generated_at, now)} · ${at(usage.read_at ?? usage.generated_at)}</span></p>
   </section>`;
 }
 

@@ -169,6 +169,11 @@ test('claude: the panel shows limits, pace, models and projects, and keeps the l
   assert.match(renderClaude(buildClaudeUsage({ fetched: { limits: null, plan: null, problem: 'No Claude login' }, hours: {}, now }), now), /No Claude login/);
 });
 
+test('claude: the footer shows the exact time of the reading next to the relative one (#21)', () => {
+  const html = renderClaude(usageAt(33), now, []);
+  assert.match(html, /Read <time[^>]*data-rel[^>]*>[^<]*<\/time> · <time datetime="[^"]+" data-abs>[^<]+<\/time>/);
+});
+
 test('claude: build puts the panel on its own tab and the line on the Overview', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'claude-build-'));
   await mkdir(path.join(dir, 'status'));
