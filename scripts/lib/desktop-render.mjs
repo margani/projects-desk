@@ -35,7 +35,7 @@ export function desktopApps(entries, apps) {
   });
 }
 
-// A status file names an app as its project is named ("chogan"), so the
+// A status file names an app as its project is named ("boreal"), so the
 // Desktop shows the first letter in upper case, the way an app is titled.
 function displayName(name) {
   const [first = '', ...rest] = [...name];
