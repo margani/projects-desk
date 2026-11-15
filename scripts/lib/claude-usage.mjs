@@ -134,7 +134,7 @@ export async function fetchLimits({ credentialsFile, fetchImpl = fetch, timeoutM
     if (!res.ok) return { limits: null, plan, problem: `The usage endpoint answered HTTP ${res.status}` };
     return { limits: normalizeLimits(JSON.parse(body)), plan, problem: null };
   } catch (err) {
-    return { limits: null, plan, problem: err.name === 'AbortError' ? `The usage endpoint did not answer within ${timeoutMs / 1000} s` : `Could not read the usage endpoint: ${err.message}` };
+    return { limits: null, plan, problem: err.name === 'AbortError' ? `The usage endpoint did not answer within ${timeoutMs / 1000} s` : `Could not read the usage endpoint: ${err.message}${err.cause?.code ? ` (${err.cause.code})` : ''}` };
   } finally {
     clearTimeout(timer);
   }

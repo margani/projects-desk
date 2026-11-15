@@ -65,6 +65,15 @@ test('claude: the login token goes only into the request, never into the result'
   assert.match(missing.problem, /Could not read the Claude login \(ENOENT\)/);
 });
 
+test('claude: a network failure names its cause, not only "fetch failed" (#23)', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'claude-cause-'));
+  const credentialsFile = path.join(dir, 'c.json');
+  await writeFile(credentialsFile, JSON.stringify({ claudeAiOauth: { accessToken: 'tok', expiresAt: Date.now() + 3600e3 } }));
+  const failing = async () => { throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.anthropic.com'), { code: 'ENOTFOUND' }) }); };
+  const r = await fetchLimits({ credentialsFile, fetchImpl: failing });
+  assert.match(r.problem, /fetch failed \(ENOTFOUND\)/);
+});
+
 const line = (o) => JSON.stringify(o) + '\n';
 const reply = (id, model, cwd, ts, usage) => line({ type: 'assistant', timestamp: ts, cwd, message: { id, model, usage } });
 
