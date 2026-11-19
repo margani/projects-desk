@@ -25,7 +25,8 @@
 # Other machines: `open` and `close` use the machine the project has in
 # desk.config.json (`project_machines`, default this one) unless --on says
 # otherwise. A remote run is the same script over ssh, from that machine's own
-# checkout of this repository, so code never travels except through GitHub.
+# copy of these scripts, streamed over the same ssh connection, so nothing has
+# to be cloned there.
 # A project is open on one machine at a time; `list` shows all of them.
 #
 # A project is a folder directly under PROJECTS_DIR with a status file or
@@ -161,17 +162,22 @@ remote_machines() { jq -r '.machines // {} | keys[]' "$CONFIG" 2>/dev/null | gre
 # message, not hang the caller (exit 4). Names from the config go into a remote
 # shell command, so they are checked first.
 remote_run() {
-  local m="$1" alias repo rc; shift
+  local m="$1" alias pdir rc; shift
   [[ "$m" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "'$m' is not a machine name"
   jq -e --arg m "$m" '.machines[$m]' "$CONFIG" >/dev/null 2>&1 ||
     die "machine '$m' is not in $CONFIG (machines: $LOCAL_MACHINE $(remote_machines | tr '\n' ' '))"
   alias="$(machine_field "$m" ssh)"; alias="${alias:-$m}"
-  repo="$(machine_field "$m" repo)"; repo="${repo:-projects/personal/projects-desk}"
+  pdir="$(machine_field "$m" projects_dir)"; pdir="${pdir:-projects/personal}"
   [[ "$alias" =~ ^[A-Za-z0-9][A-Za-z0-9._@-]*$ ]] || die "machine $m: ssh alias '$alias' is not plain"
-  [[ "$repo" =~ ^[A-Za-z0-9._/-]+$ ]] || die "machine $m: repo '$repo' must be a path under the home folder"
-  ssh -o BatchMode=yes -o ConnectTimeout="${RC_SSH_TIMEOUT:-5}" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
-    -- "$alias" "RC_MACHINE=$(printf %q "$m") \"\$HOME\"/$(printf %q "$repo")/scripts/rc.sh $(printf '%q ' "$@")"
-  rc=$?
+  [[ "$pdir" =~ ^[A-Za-z0-9._/-]+$ ]] || die "machine $m: projects_dir '$pdir' must be a path under the home folder"
+  # The two scripts travel over the same ssh connection into a cache folder on
+  # that machine, so nothing has to be cloned there and it always runs the
+  # version from this machine. The remote paths are its own projects folder
+  # and the status folder its sessions write to.
+  tar -C "$REPO" -cf - scripts/rc.sh scripts/rc-session.sh |
+    ssh -o BatchMode=yes -o ConnectTimeout="${RC_SSH_TIMEOUT:-5}" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+      -- "$alias" "d=\"\$HOME/.cache/projects-desk-rc\"; mkdir -p \"\$d\" && tar -xf - -C \"\$d\" && RC_MACHINE=$(printf %q "$m") PROJECTS_DIR=\"\$HOME\"/$(printf %q "$pdir") RC_STATUS_DIR=\"\$HOME\"/$(printf %q "$pdir")/projects-dashboard/status \"\$d\"/scripts/rc.sh $(printf '%q ' "$@")"
+  rc=${PIPESTATUS[1]}
   if [ "$rc" -eq 255 ]; then
     echo "rc: machine $m ($alias) is unreachable: off, asleep, or ssh refused" >&2
     return 4

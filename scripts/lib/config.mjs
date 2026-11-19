@@ -28,13 +28,13 @@ function checkMachines(cfg) {
   const plain = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
   const machines = cfg?.machines;
   if (machines !== undefined && (typeof machines !== 'object' || machines === null || Array.isArray(machines))) {
-    return ['machines must be an object of machine name → {ssh, repo}'];
+    return ['machines must be an object of machine name → {ssh, projects_dir}'];
   }
   for (const [name, m] of Object.entries(machines ?? {})) {
     if (!plain.test(name)) problems.push(`machines: "${name}" is not a plain machine name`);
     if (typeof m !== 'object' || m === null || Array.isArray(m)) { problems.push(`machines.${name} must be an object`); continue; }
     if ('ssh' in m && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(m.ssh ?? '')) problems.push(`machines.${name}.ssh must be a plain ssh host alias`);
-    if ('repo' in m && !/^[A-Za-z0-9._/-]+$/.test(m.repo ?? '')) problems.push(`machines.${name}.repo must be a path under the home folder of that machine`);
+    if ('projects_dir' in m && !/^[A-Za-z0-9._/-]+$/.test(m.projects_dir ?? '')) problems.push(`machines.${name}.projects_dir must be a path under the home folder of that machine`);
   }
   const pm = cfg?.project_machines;
   if (pm !== undefined) {

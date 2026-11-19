@@ -193,6 +193,7 @@ function machines({ config, sshReply = {}, args }) {
 while [ "$1" != -- ]; do shift; done; shift
 host="$1"; shift
 echo "$host $*" >> "${dir}/ssh.log"
+tar -tf - >> "${dir}/ssh.stdin" 2>/dev/null
 [ -f "${dir}/reply-$host" ] || exit 255
 cat "${dir}/reply-$host"
 exit 0
@@ -206,14 +207,19 @@ exit 0
   });
   let log = '';
   try { log = execFileSync('cat', [join(dir, 'ssh.log')], { encoding: 'utf8' }); } catch { /* ssh was never called */ }
-  return { ...r, log };
+  let stdinTar = '';
+  try { stdinTar = execFileSync('cat', [join(dir, 'ssh.stdin')], { encoding: 'utf8' }); } catch { /* nothing was streamed */ }
+  return { ...r, log, stdinTar };
 }
-const twoMachines = { machines: { 'hm-pc': { ssh: 'laptop', repo: 'projects/personal/projects-desk' } }, project_machines: { demo: 'hm-pc' } };
+const twoMachines = { machines: { 'hm-pc': { ssh: 'laptop', projects_dir: 'projects/personal' } }, project_machines: { demo: 'hm-pc' } };
 
 test('rc.sh: close --on runs the same script on that machine over ssh, from its own checkout', linuxOnly, () => {
   const r = machines({ config: twoMachines, sshReply: { laptop: 'demo closed\n' }, args: ['close', '--on', 'hm-pc', 'demo'] });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.log, /^laptop RC_MACHINE=hm-pc "\$HOME"\/projects\/personal\/projects-desk\/scripts\/rc\.sh close demo\b/);
+  assert.match(r.log, /^laptop .*RC_MACHINE=hm-pc PROJECTS_DIR="\$HOME"\/projects\/personal RC_STATUS_DIR="\$HOME"\/projects\/personal\/projects-dashboard\/status "\$d"\/scripts\/rc\.sh close demo\b/);
+  // the scripts are streamed, not cloned: the remote command unpacks them first
+  assert.match(r.log, /tar -xf - -C/);
+  assert.equal(r.stdinTar.includes('scripts/rc.sh') && r.stdinTar.includes('scripts/rc-session.sh'), true);
   assert.doesNotMatch(r.log, /--on/);
 });
 
