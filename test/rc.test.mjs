@@ -219,6 +219,7 @@ test('rc.sh: close --on runs the same script on that machine over ssh, from its 
   assert.match(r.log, /^laptop .*RC_MACHINE=hm-pc PROJECTS_DIR="\$HOME"\/projects\/personal RC_STATUS_DIR="\$HOME"\/projects\/personal\/projects-dashboard\/status "\$d"\/scripts\/rc\.sh close demo\b/);
   // the scripts are streamed, not cloned: the remote command unpacks them first
   assert.match(r.log, /tar -xf - -C/);
+  assert.match(r.log, /PATH="\$HOME\/\.local\/bin:\$PATH"/);
   assert.equal(r.stdinTar.includes('scripts/rc.sh') && r.stdinTar.includes('scripts/rc-session.sh'), true);
   assert.doesNotMatch(r.log, /--on/);
 });
