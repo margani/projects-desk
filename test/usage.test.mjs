@@ -191,3 +191,29 @@ test('usage: Minutes by repository is open for an account with many repositories
   assert.match(html, /<details class="repo-usage" open>\s*<summary>Minutes by repository · 8<\/summary>/);
   assert.equal((html.match(/<li/g) ?? []).length, 8);
 });
+
+test('github usage: a connection error is retried, any other error is not', async () => {
+  const { withRetry } = await import('../scripts/lib/github-usage.mjs');
+  const sleeps = [];
+  const sleep = async (ms) => { sleeps.push(ms); };
+  let calls = 0;
+  const flaky = async () => { calls++; if (calls < 3) throw Object.assign(new Error('x'), { stderr: 'error connecting to api.github.com' }); return 'ok'; };
+  assert.equal(await withRetry(flaky, { sleep, delayMs: 10 }), 'ok');
+  assert.equal(calls, 3);
+  assert.deepEqual(sleeps, [10, 20]);
+  let denied = 0;
+  await assert.rejects(withRetry(async () => { denied++; throw Object.assign(new Error('x'), { stderr: 'HTTP 403' }); }, { sleep }), /x/);
+  assert.equal(denied, 1);
+  let always = 0;
+  await assert.rejects(withRetry(async () => { always++; throw Object.assign(new Error('x'), { stderr: 'error connecting to api.github.com' }); }, { sleep, tries: 3 }));
+  assert.equal(always, 3);
+});
+
+test('github usage: mapLimit keeps the order and never runs more than the limit at once', async () => {
+  const { mapLimit } = await import('../scripts/lib/github-usage.mjs');
+  let running = 0, peak = 0;
+  const out = await mapLimit([1, 2, 3, 4, 5, 6, 7], 3, async (n) => { running++; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 5)); running--; return n * 2; });
+  assert.deepEqual(out, [2, 4, 6, 8, 10, 12, 14]);
+  assert.equal(peak, 3);
+  assert.deepEqual(await mapLimit([], 3, async (n) => n), []);
+});
