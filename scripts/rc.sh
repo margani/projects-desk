@@ -170,13 +170,15 @@ remote_run() {
   pdir="$(machine_field "$m" projects_dir)"; pdir="${pdir:-projects/personal}"
   [[ "$alias" =~ ^[A-Za-z0-9][A-Za-z0-9._@-]*$ ]] || die "machine $m: ssh alias '$alias' is not plain"
   [[ "$pdir" =~ ^[A-Za-z0-9._/-]+$ ]] || die "machine $m: projects_dir '$pdir' must be a path under the home folder"
+  # ssh runs a non-interactive shell, whose PATH lacks ~/.local/bin, where the
+  # native Claude Code installer puts `claude` (found missing on the first laptop).
   # The two scripts travel over the same ssh connection into a cache folder on
   # that machine, so nothing has to be cloned there and it always runs the
   # version from this machine. The remote paths are its own projects folder
   # and the status folder its sessions write to.
   tar -C "$REPO" -cf - scripts/rc.sh scripts/rc-session.sh |
     ssh -o BatchMode=yes -o ConnectTimeout="${RC_SSH_TIMEOUT:-5}" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
-      -- "$alias" "d=\"\$HOME/.cache/projects-desk-rc\"; mkdir -p \"\$d\" && tar -xf - -C \"\$d\" && RC_MACHINE=$(printf %q "$m") PROJECTS_DIR=\"\$HOME\"/$(printf %q "$pdir") RC_STATUS_DIR=\"\$HOME\"/$(printf %q "$pdir")/projects-dashboard/status \"\$d\"/scripts/rc.sh $(printf '%q ' "$@")"
+      -- "$alias" "PATH=\"\$HOME/.local/bin:\$PATH\"; d=\"\$HOME/.cache/projects-desk-rc\"; mkdir -p \"\$d\" && tar -xf - -C \"\$d\" && RC_MACHINE=$(printf %q "$m") PROJECTS_DIR=\"\$HOME\"/$(printf %q "$pdir") RC_STATUS_DIR=\"\$HOME\"/$(printf %q "$pdir")/projects-dashboard/status \"\$d\"/scripts/rc.sh $(printf '%q ' "$@")"
   rc=${PIPESTATUS[1]}
   if [ "$rc" -eq 255 ]; then
     echo "rc: machine $m ($alias) is unreachable: off, asleep, or ssh refused" >&2
