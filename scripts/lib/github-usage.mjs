@@ -89,8 +89,34 @@ export function summarise(items, { plan, now, visibility = new Map() }) {
   };
 }
 
+const CONNECTION = /error connecting|could not resolve|ETIMEDOUT|ECONNRESET|EAI_AGAIN/i;
+
+/**
+ * Runs fn again after a short wait when it fails to connect. The resolver on
+ * the owner's network drops lookups under a burst (28 of 40 parallel ones
+ * failed), so a one-off "error connecting to api.github.com" is not a real
+ * outage. Any other error (403, 404, bad scope) is returned at once.
+ */
+export async function withRetry(fn, { tries = 4, delayMs = 1500, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await fn(); } catch (err) {
+      if (attempt >= tries || !CONNECTION.test(`${err.stderr ?? ''} ${err.message ?? ''}`)) throw err;
+      await sleep(delayMs * attempt);
+    }
+  }
+}
+
+/** Like Promise.all(items.map(fn)) but with at most `limit` calls running at once. */
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], i); } };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 async function gh(args) {
-  const { stdout } = await run('gh', ['api', ...args], { timeout: 30_000, windowsHide: true });
+  const { stdout } = await withRetry(() => run('gh', ['api', ...args], { timeout: 30_000, windowsHide: true }));
   return JSON.parse(stdout);
 }
 
@@ -115,13 +141,13 @@ export async function collectAccount({ login, kind }, { now = Date.now(), api = 
     const items = usage.usageItems ?? [];
     // A repository that cannot be read (deleted, renamed) stays counted.
     const names = [...new Set(items.map((it) => it.repositoryName).filter(Boolean))];
-    const visibility = new Map(await Promise.all(names.map(async (name) => {
+    const visibility = new Map(await mapLimit(names, 3, async (name) => {
       try {
         return [name, (await api([`repos/${login}/${name}`])).visibility ?? null];
       } catch {
         return [name, null];
       }
-    })));
+    }));
     return { login, kind, ...summarise(items, { plan, now, visibility }) };
   } catch (err) {
     return { login, kind, plan: null, minutes: null, repos: [], storage: null, billed_usd: null, problem: explain(err) };
@@ -133,6 +159,6 @@ export async function collectUsage(accounts, { now = Date.now(), api } = {}) {
   return {
     generated_at: date.toISOString().replace(/\.\d+Z$/, 'Z'),
     period: date.toISOString().slice(0, 7),
-    accounts: await Promise.all(accounts.map((a) => collectAccount(a, { now, api }))),
+    accounts: await mapLimit(accounts, 1, (a) => collectAccount(a, { now, api })),
   };
 }
