@@ -18,20 +18,14 @@ export function runProgram(cmd, args) {
   });
 }
 
-/** The projects each remote machine holds, from `project_machines`. The local machine never appears. */
-export function remoteProjects(config, local = process.env.RC_MACHINE || 'claude') {
-  const byMachine = new Map();
-  for (const [project, machine] of Object.entries(config?.project_machines ?? {})) {
-    if (machine === local || !PLAIN.test(project) || !config?.machines || !Object.hasOwn(config.machines, machine)) continue;
-    if (!byMachine.has(machine)) byMachine.set(machine, []);
-    byMachine.get(machine).push(project);
-  }
-  return byMachine;
+/** The remote machines in `machines`; the local one never appears. Any project may run on any of them. */
+export function remoteMachines(config, local = process.env.RC_MACHINE || 'claude') {
+  return Object.keys(config?.machines ?? {}).filter((m) => m !== local);
 }
 
-/** The remote shell command: per project, a marker line with the file's mtime, the file, an end marker. */
-export function remoteCommand(projectsDir, projects) {
-  return `for p in ${projects.join(' ')}; do f="$HOME/${projectsDir}/projects-dashboard/status/$p.json"; if [ -f "$f" ]; then echo "@@FILE $p $(date -r "$f" +%s)"; cat "$f"; echo; echo "@@END"; fi; done`;
+/** The remote shell command: per status file, a marker line with its mtime, the file, an end marker. */
+export function remoteCommand(projectsDir) {
+  return `for f in "$HOME/${projectsDir}/projects-dashboard/status"/*.json; do [ -f "$f" ] || continue; p=$(basename "$f" .json); echo "@@FILE $p $(date -r "$f" +%s)"; cat "$f"; echo; echo "@@END"; done`;
 }
 
 export function parseRemote(stdout) {
@@ -47,24 +41,24 @@ export function parseRemote(stdout) {
 }
 
 /**
- * Copies each remote project's status file into statusDir when the remote one is
- * newer than the local one (a remote file is not newer when the project was
- * opened here instead, so a stale remote copy never overwrites live work).
+ * Copies every status file on every remote machine into statusDir when the
+ * remote one is newer than the local one, so with one project on two machines
+ * the most recent write wins and a stale copy never overwrites live work.
  * Returns log lines: "PULLED <project> from <machine>" and "REMOTE <machine>:
  * <problem>". A machine that is off, a missing file or a file that is not JSON
  * leaves the last copy where it is; none of it fails the sync.
  */
 export async function pullRemoteStatus(config, statusDir, { run = runProgram, timeoutSeconds = 5 } = {}) {
   const log = [];
-  for (const [machine, projects] of remoteProjects(config)) {
+  for (const machine of remoteMachines(config)) {
     const spec = config.machines[machine] ?? {};
     const alias = spec.ssh ?? machine;
     const projectsDir = spec.projects_dir ?? 'projects/personal';
     if (!ALIAS.test(alias) || !DIR.test(projectsDir)) { log.push(`REMOTE ${machine}: ssh alias or projects_dir is not plain; skipped`); continue; }
-    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(projectsDir, projects)]);
+    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(projectsDir)]);
     if (r.code !== 0) { log.push(`REMOTE ${machine}: unreachable or failed (exit ${r.code}); keeping the last copies`); continue; }
     for (const f of parseRemote(r.stdout)) {
-      if (!projects.includes(f.project)) continue;
+      if (!PLAIN.test(f.project)) continue;
       try { JSON.parse(f.text); } catch (err) { log.push(`REMOTE ${machine}: ${f.project}.json is not JSON (${err.message}); keeping the last copy`); continue; }
       const target = path.join(statusDir, `${f.project}.json`);
       const local = await stat(target).catch(() => null);

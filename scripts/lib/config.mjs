@@ -20,9 +20,8 @@ export function checkDeskConfig(cfg) {
 }
 
 // `machines` lets scripts/rc.sh run sessions on other computers over ssh;
-// `project_machines` says where each project lives (default: this computer,
-// `claude`). A typo here would send a project to a machine that does not exist,
-// so both are checked, not just read.
+// a project may run on any of them. A typo in a machine's ssh alias or folder
+// would run commands somewhere unintended, so they are checked, not just read.
 function checkMachines(cfg) {
   const problems = [];
   const plain = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -35,13 +34,6 @@ function checkMachines(cfg) {
     if (typeof m !== 'object' || m === null || Array.isArray(m)) { problems.push(`machines.${name} must be an object`); continue; }
     if ('ssh' in m && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(m.ssh ?? '')) problems.push(`machines.${name}.ssh must be a plain ssh host alias`);
     if ('projects_dir' in m && !/^[A-Za-z0-9._/-]+$/.test(m.projects_dir ?? '')) problems.push(`machines.${name}.projects_dir must be a path under the home folder of that machine`);
-  }
-  const pm = cfg?.project_machines;
-  if (pm !== undefined) {
-    if (typeof pm !== 'object' || pm === null || Array.isArray(pm)) return [...problems, 'project_machines must be an object of project → machine name'];
-    for (const [project, machine] of Object.entries(pm)) {
-      if (machine !== 'claude' && !(machines && Object.hasOwn(machines, machine))) problems.push(`project_machines.${project}: machine "${machine}" is not in machines`);
-    }
   }
   return problems;
 }

@@ -4,17 +4,17 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync, utimesSync, readdirSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pullRemoteStatus, remoteProjects, parseRemote } from '../scripts/lib/remote-status.mjs';
+import { pullRemoteStatus, remoteMachines, parseRemote } from '../scripts/lib/remote-status.mjs';
 
-const config = { machines: { laptop: { ssh: 'laptop-alias', projects_dir: 'work' } }, project_machines: { demo: 'laptop', other: 'laptop', here: 'claude' } };
+const config = { machines: { laptop: { ssh: 'laptop-alias', projects_dir: 'work' } } };
 const remoteOut = (files) => files.map(([p, mtime, text]) => `@@FILE ${p} ${mtime}\n${text}\n@@END\n`).join('');
 const folder = () => mkdtempSync(join(tmpdir(), 'remote-status-'));
 const ok = (stdout) => async () => ({ code: 0, stdout, stderr: '' });
 
-test('remote status: only projects configured on a remote machine are asked for', () => {
-  assert.deepEqual([...remoteProjects(config)], [['laptop', ['demo', 'other']]]);
-  assert.deepEqual([...remoteProjects({ project_machines: { demo: 'nowhere' }, machines: {} })], []);
-  assert.deepEqual([...remoteProjects({})], []);
+test('remote status: every configured remote machine is read, not the local one, and no project map is needed', () => {
+  assert.deepEqual(remoteMachines({ machines: { laptop: {}, claude: {}, other: {} } }), ['laptop', 'other']);
+  assert.deepEqual(remoteMachines({ machines: { a: {} } }, 'a'), []);
+  assert.deepEqual(remoteMachines({}), []);
 });
 
 test('remote status: a newer remote file is pulled and keeps its mtime', async () => {
@@ -27,7 +27,7 @@ test('remote status: a newer remote file is pulled and keeps its mtime', async (
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'ssh');
   assert.ok(calls[0][1].includes('BatchMode=yes') && calls[0][1].includes('laptop-alias'));
-  assert.match(calls[0][1].at(-1), /\$HOME\/work\/projects-dashboard\/status\/\$p\.json/);
+  assert.match(calls[0][1].at(-1), /\$HOME\/work\/projects-dashboard\/status"\/\*\.json/);
   assert.deepEqual(readdirSync(dir), ['demo.json']);
 });
 
@@ -58,12 +58,20 @@ test('remote status: a machine that is off keeps the last copies, reports once, 
   assert.equal(readFileSync(join(dir, 'demo.json'), 'utf8'), '{"good":true}');
 });
 
-test('remote status: a project the machine was not asked about is ignored; a missing file is no error', async () => {
+test('remote status: every project on the machine is pulled, from every machine, the newest wins', async () => {
   const dir = folder();
-  const log = await pullRemoteStatus(config, dir, { run: ok(remoteOut([['stranger', 2000, '{}']])) });
+  const cfg = { machines: { laptop: { ssh: 'a' }, desk: { ssh: 'b' } } };
+  const out = { a: remoteOut([['one', 2000, '{"m":"a"}'], ['two', 2000, '{}']]), b: remoteOut([['one', 3000, '{"m":"b"}']]) };
+  const log = await pullRemoteStatus(cfg, dir, { run: async (_c, args) => ({ code: 0, stdout: out[args.at(-2)], stderr: '' }) });
+  assert.deepEqual(log, ['PULLED one from laptop', 'PULLED two from laptop', 'PULLED one from desk']);
+  assert.equal(readFileSync(join(dir, 'one.json'), 'utf8'), '{"m":"b"}\n');
+});
+
+test('remote status: a name that is not a plain project name is ignored; no files is no error', async () => {
+  const dir = folder();
+  const log = await pullRemoteStatus(config, dir, { run: ok(remoteOut([['../evil', 2000, '{}']])) });
   assert.deepEqual(log, []);
-  assert.equal(existsSync(join(dir, 'stranger.json')), false);
-  assert.equal(existsSync(join(dir, 'demo.json')), false);
+  assert.deepEqual(readdirSync(dir), []);
 });
 
 test('remote status: the remote output is parsed marker by marker', () => {
