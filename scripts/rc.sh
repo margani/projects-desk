@@ -236,8 +236,12 @@ cmd_where() { [ -n "$(claude_pid "${1:?usage: rc.sh where <project>}")" ] && ech
 # The window's command. Every part is shell-quoted: tmux runs this string
 # through the shell. A non-empty second argument resumes.
 session_cmd() {
-  local p="$1" resume="${2:-}"
-  printf '%s%s' "${resume:+RC_RESUME=1 }" "$(printf '%q ' "$REPO/scripts/rc-session.sh" "$p" --permission-mode "$MODE")"
+  local p="$1" resume="${2:-}" shown="$1"
+  # On another machine the session is "<project> on <machine>", so the Remote
+  # Control list tells apart the same project on two computers. The tmux window
+  # keeps the plain project name, which every lookup here relies on.
+  [ "$LOCAL_MACHINE" != claude ] && shown="$p on $LOCAL_MACHINE"
+  printf '%s%s' "${resume:+RC_RESUME=1 }" "$(printf '%q ' "$REPO/scripts/rc-session.sh" "$shown" --permission-mode "$MODE")"
   printf '; exec "${SHELL:-bash}"'
 }
 

@@ -270,3 +270,11 @@ test('config: machines and project_machines are checked', async () => {
   assert.match(checkDeskConfig({ ...base, machines: { 'a b': {} } }).join(), /not a plain machine name/);
   assert.match(checkDeskConfig({ ...base, machines: { x: { ssh: '-oProxyCommand=evil' } } }).join(), /plain ssh host alias/);
 });
+
+test('rc.sh: a session on another machine is named "<project> on <machine>", on this one just the project', linuxOnly, () => {
+  // session_cmd builds the window's command; the name it hands to rc-session.sh
+  // is what Remote Control lists, so the same project on two computers must differ.
+  const run = (machine) => spawnSync('bash', ['-c', `REPO=/r MODE=auto LOCAL_MACHINE=${machine}; eval "$(sed -n '/^session_cmd() {/,/^}/p' "${RC}")"; session_cmd cv`], { encoding: 'utf8' });
+  assert.match(run('hm-pc').stdout, /rc-session\.sh cv\\ on\\ hm-pc --permission-mode auto/);
+  assert.match(run('claude').stdout, /rc-session\.sh cv --permission-mode auto/);
+});
