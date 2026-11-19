@@ -15,6 +15,34 @@ export function checkDeskConfig(cfg) {
   if (!Array.isArray(cfg?.domains) || cfg.domains.length === 0) problems.push('domains must name at least one custom domain behind Cloudflare Access');
   else if (cfg.domains.some((d) => typeof d !== 'string' || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(d))) problems.push('domains must be plain host names');
   if ('claude' in (cfg ?? {}) && typeof cfg.claude !== 'boolean') problems.push('claude must be true or false');
+  problems.push(...checkMachines(cfg));
+  return problems;
+}
+
+// `machines` lets scripts/rc.sh run sessions on other computers over ssh;
+// `project_machines` says where each project lives (default: this computer,
+// `claude`). A typo here would send a project to a machine that does not exist,
+// so both are checked, not just read.
+function checkMachines(cfg) {
+  const problems = [];
+  const plain = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+  const machines = cfg?.machines;
+  if (machines !== undefined && (typeof machines !== 'object' || machines === null || Array.isArray(machines))) {
+    return ['machines must be an object of machine name → {ssh, repo}'];
+  }
+  for (const [name, m] of Object.entries(machines ?? {})) {
+    if (!plain.test(name)) problems.push(`machines: "${name}" is not a plain machine name`);
+    if (typeof m !== 'object' || m === null || Array.isArray(m)) { problems.push(`machines.${name} must be an object`); continue; }
+    if ('ssh' in m && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(m.ssh ?? '')) problems.push(`machines.${name}.ssh must be a plain ssh host alias`);
+    if ('repo' in m && !/^[A-Za-z0-9._/-]+$/.test(m.repo ?? '')) problems.push(`machines.${name}.repo must be a path under the home folder of that machine`);
+  }
+  const pm = cfg?.project_machines;
+  if (pm !== undefined) {
+    if (typeof pm !== 'object' || pm === null || Array.isArray(pm)) return [...problems, 'project_machines must be an object of project → machine name'];
+    for (const [project, machine] of Object.entries(pm)) {
+      if (machine !== 'claude' && !(machines && Object.hasOwn(machines, machine))) problems.push(`project_machines.${project}: machine "${machine}" is not in machines`);
+    }
+  }
   return problems;
 }
 

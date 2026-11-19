@@ -43,6 +43,27 @@ Use `scripts/rc.sh` in the projects-desk checkout:
   `RC_KEEP_OPEN` (an environment variable read by `rc.sh`). A manual
   `rc.sh close` works for every project. Never close the hub.
 
+## Other machines
+
+Projects can live on other computers. `claude` is this machine and the
+default when the owner names none; the others are in `desk.config.json`
+(`machines`, and `project_machines` for where each project lives).
+
+- `rc.sh list` shows every machine in a MACHINE column. A machine that is off
+  or asleep is one `unreachable` row, not an error.
+- `rc.sh open --on <machine> <project>`, `close --on <machine> <project>`,
+  `list --on <machine>` and `close-idle --on <machine>` run the same command
+  on that machine over ssh. Without `--on`, `open` and `close` use the
+  project's machine from the config.
+- A project is open on one machine at a time. `open` refuses and says where it
+  is open; close it there first, then open it where the owner wants it.
+- Exit 4 means the machine could not be reached (off, asleep, ssh refused):
+  tell the owner which machine, do not retry in a loop. Code moves between
+  machines through GitHub only, never by copying files.
+- A project's status file is written by its own session on its machine and
+  copied back by the desk's sync (every 2 minutes). Read `status/*.json` here
+  as usual.
+
 ## Handing work to a project
 
 - `ListAgents` shows the open sessions with their tmux window

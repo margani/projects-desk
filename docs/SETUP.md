@@ -328,3 +328,24 @@ your phone over Remote Control. Sessions idle for 24 hours are closed, except
 those named in `RC_KEEP_OPEN`. Projects are the folders next to this repository
 unless you set `PROJECTS_DIR`. A coordinator session, `hub`, opens at login and
 hands work to the project sessions. Its instructions are in `hub/CLAUDE.md`.
+
+### Sessions on other computers
+
+`rc.sh` can open and close sessions on other machines over ssh, so a project
+can run where its tools and files are. List the machines in `desk.config.json`:
+
+```json
+"machines": { "laptop": { "ssh": "laptop", "repo": "projects/personal/projects-desk" } },
+"project_machines": { "my-project": "laptop" }
+```
+
+`repo` is this repository's checkout on that machine, relative to its home
+folder. The computer running the desk is called `claude` and is the default.
+Then `scripts/rc.sh open --on laptop my-project` (also `close`, `list` and
+`close-idle`) runs the same script there. A project is open on one machine at a
+time, and a machine that is off gives a clear error (exit 4) within 5 seconds.
+
+Each remote machine needs: sshd on and your key accepted (`ssh <alias> true`
+works without a prompt), `tmux`, `claude`, `git`, `gh` logged in, a GPG signing
+key if you sign commits, this repository cloned at `repo`, and the project
+cloned next to it. Code moves between machines through GitHub only.
