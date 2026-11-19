@@ -335,20 +335,23 @@ hands work to the project sessions. Its instructions are in `hub/CLAUDE.md`.
 can run where its tools and files are. List the machines in `desk.config.json`:
 
 ```json
-"machines": { "laptop": { "ssh": "laptop", "repo": "projects/personal/projects-desk" } },
+"machines": { "laptop": { "ssh": "laptop", "projects_dir": "projects/personal" } },
 "project_machines": { "my-project": "laptop" }
 ```
 
-`repo` is this repository's checkout on that machine, relative to its home
-folder. The computer running the desk is called `claude` and is the default.
-Then `scripts/rc.sh open --on laptop my-project` (also `close`, `list` and
-`close-idle`) runs the same script there. A project is open on one machine at a
-time, and a machine that is off gives a clear error (exit 4) within 5 seconds.
+`projects_dir` is the folder holding the projects on that machine, relative to
+its home folder. The computer running the desk is called `claude` and is the
+default. Then `scripts/rc.sh open --on laptop my-project` (also `close`, `list`
+and `close-idle`) runs the same script there: `rc.sh` and `rc-session.sh` are
+streamed over the ssh connection, so this repository is not cloned on the other
+machine. A project is open on one machine at a time, and a machine that is off
+gives a clear error (exit 4) within 5 seconds.
 
 Each remote machine needs: sshd on and your key accepted (`ssh <alias> true`
-works without a prompt), `tmux`, `claude`, `git`, `gh` logged in, a GPG signing
-key if you sign commits, this repository cloned at `repo`, and the project
-cloned next to it. Code moves between machines through GitHub only.
+works without a prompt), `tmux`, `jq`, `claude`, `git`, `gh` logged in, a GPG signing
+key if you sign commits, the project cloned under `projects_dir`, and the
+folder `<projects_dir>/projects-dashboard/status` (its sessions write their
+status files there). Code moves between machines through GitHub only.
 
 A project's status file is written on its own machine. Before every sync, the
 desk copies it over ssh when the remote copy is newer; a machine that is off

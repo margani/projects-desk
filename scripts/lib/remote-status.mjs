@@ -7,7 +7,7 @@ import path from 'node:path';
 
 const PLAIN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const ALIAS = /^[A-Za-z0-9][A-Za-z0-9._@-]*$/;
-const REPO = /^[A-Za-z0-9._/-]+$/;
+const DIR = /^[A-Za-z0-9._/-]+$/;
 
 /** Runs a program and resolves {code, stdout}; never rejects, so one machine cannot stop the others. */
 export function runProgram(cmd, args) {
@@ -30,8 +30,8 @@ export function remoteProjects(config, local = process.env.RC_MACHINE || 'claude
 }
 
 /** The remote shell command: per project, a marker line with the file's mtime, the file, an end marker. */
-export function remoteCommand(repo, projects) {
-  return `for p in ${projects.join(' ')}; do f="$HOME/${repo}/status/$p.json"; if [ -f "$f" ]; then echo "@@FILE $p $(date -r "$f" +%s)"; cat "$f"; echo; echo "@@END"; fi; done`;
+export function remoteCommand(projectsDir, projects) {
+  return `for p in ${projects.join(' ')}; do f="$HOME/${projectsDir}/projects-dashboard/status/$p.json"; if [ -f "$f" ]; then echo "@@FILE $p $(date -r "$f" +%s)"; cat "$f"; echo; echo "@@END"; fi; done`;
 }
 
 export function parseRemote(stdout) {
@@ -59,9 +59,9 @@ export async function pullRemoteStatus(config, statusDir, { run = runProgram, ti
   for (const [machine, projects] of remoteProjects(config)) {
     const spec = config.machines[machine] ?? {};
     const alias = spec.ssh ?? machine;
-    const repo = spec.repo ?? 'projects/personal/projects-desk';
-    if (!ALIAS.test(alias) || !REPO.test(repo)) { log.push(`REMOTE ${machine}: ssh alias or repo path is not plain; skipped`); continue; }
-    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(repo, projects)]);
+    const projectsDir = spec.projects_dir ?? 'projects/personal';
+    if (!ALIAS.test(alias) || !DIR.test(projectsDir)) { log.push(`REMOTE ${machine}: ssh alias or projects_dir is not plain; skipped`); continue; }
+    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(projectsDir, projects)]);
     if (r.code !== 0) { log.push(`REMOTE ${machine}: unreachable or failed (exit ${r.code}); keeping the last copies`); continue; }
     for (const f of parseRemote(r.stdout)) {
       if (!projects.includes(f.project)) continue;

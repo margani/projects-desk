@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pullRemoteStatus, remoteProjects, parseRemote } from '../scripts/lib/remote-status.mjs';
 
-const config = { machines: { laptop: { ssh: 'laptop-alias', repo: 'work/desk' } }, project_machines: { demo: 'laptop', other: 'laptop', here: 'claude' } };
+const config = { machines: { laptop: { ssh: 'laptop-alias', projects_dir: 'work' } }, project_machines: { demo: 'laptop', other: 'laptop', here: 'claude' } };
 const remoteOut = (files) => files.map(([p, mtime, text]) => `@@FILE ${p} ${mtime}\n${text}\n@@END\n`).join('');
 const folder = () => mkdtempSync(join(tmpdir(), 'remote-status-'));
 const ok = (stdout) => async () => ({ code: 0, stdout, stderr: '' });
@@ -27,6 +27,7 @@ test('remote status: a newer remote file is pulled and keeps its mtime', async (
   assert.equal(calls.length, 1);
   assert.equal(calls[0][0], 'ssh');
   assert.ok(calls[0][1].includes('BatchMode=yes') && calls[0][1].includes('laptop-alias'));
+  assert.match(calls[0][1].at(-1), /\$HOME\/work\/projects-dashboard\/status\/\$p\.json/);
   assert.deepEqual(readdirSync(dir), ['demo.json']);
 });
 

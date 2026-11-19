@@ -12,7 +12,7 @@
   "machines": {
     "laptop": {
       "ssh": "laptop",
-      "repo": "projects/personal/projects-desk"
+      "projects_dir": "projects/personal"
     }
   },
   "project_machines": {
