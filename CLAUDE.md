@@ -46,7 +46,7 @@ node scripts/watch.mjs --status   # the Windows/macOS runner: also --background,
 - `scripts/lib/schema.mjs`: validator, mirrors `STATUS_INSTRUCTIONS.md`.
 - `scripts/lib/d1.mjs`: the computer's D1 client, through `bin/cfapi.mjs`.
 - `scripts/lib/remote-status.mjs`: before each sync, copies status files of projects
-  configured on another machine (`project_machines`) over ssh, when the remote copy is
+  on the machines in `machines` over ssh, when the remote copy is
   newer. Failures print `REMOTE ...` lines and never fail the sync.
 - `scripts/sync-status.mjs`, `usage-sync.mjs`, `users-sync.mjs`,
   `activity-all.mjs`: collectors run by the timers in `scripts/systemd/`.

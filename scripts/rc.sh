@@ -22,12 +22,12 @@
 #   rc.sh close-idle              close every project idle RC_IDLE_HOURS (24),
 #                                 except those in RC_KEEP_OPEN
 #
-# Other machines: `open` and `close` use the machine the project has in
-# desk.config.json (`project_machines`, default this one) unless --on says
-# otherwise. A remote run is the same script over ssh, from that machine's own
+# Other machines: `open` and `close` act on this machine unless --on says
+# otherwise. Any project can run on any machine; keeping two sessions of one
+# project from running in parallel is left to the owner. A remote run is the same script over ssh, from that machine's own
 # copy of these scripts, streamed over the same ssh connection, so nothing has
 # to be cloned there.
-# A project is open on one machine at a time; `list` shows all of them.
+# `list` shows every machine.
 #
 # A project is a folder directly under PROJECTS_DIR with a status file or
 # earlier Claude Code conversations; `open` also takes a new git repo or
@@ -149,12 +149,6 @@ idle_hours() {
 
 # --- other machines ---------------------------------------------------------
 machine_field() { jq -r --arg m "$1" --arg f "$2" '.machines[$m][$f] // empty' "$CONFIG" 2>/dev/null; }
-# The machine a project runs on: its entry in project_machines, else this one.
-machine_of() {
-  local m=""
-  [ "$1" = hub ] || m="$(jq -r --arg p "$1" '.project_machines[$p] // empty' "$CONFIG" 2>/dev/null)"
-  echo "${m:-$LOCAL_MACHINE}"
-}
 remote_machines() { jq -r '.machines // {} | keys[]' "$CONFIG" 2>/dev/null | grep -vxF "$LOCAL_MACHINE"; }
 
 # Runs rc.sh on another machine. ssh gets a short connect timeout and no
@@ -185,25 +179,6 @@ remote_run() {
     return 4
   fi
   return "$rc"
-}
-
-# One project is open on one machine at a time: refuse to open it on $2 while
-# another machine has it. A machine that cannot be reached is warned about,
-# not trusted blindly and not fatal, since a machine that is off holds no
-# session.
-check_elsewhere() {
-  local p="$1" target="$2" m state
-  [ "$p" = hub ] && return 0
-  for m in "$LOCAL_MACHINE" $(remote_machines); do
-    [ "$m" = "$target" ] && continue
-    if [ "$m" = "$LOCAL_MACHINE" ]; then
-      state="$([ -n "$(claude_pid "$p")" ] && echo open || echo closed)"
-    else
-      state="$(remote_run "$m" where "$p" 2>/dev/null)" || { echo "rc: warning: could not check whether $p is open on $m (unreachable)" >&2; continue; }
-    fi
-    [ "$state" = open ] && die "$p is already open on $m; close it there first (rc.sh close --on $m $p)"
-  done
-  return 0
 }
 
 cmd_list() {
@@ -375,10 +350,6 @@ if [ $# -gt 0 ]; then
   done
   proj=""
   for a in "${rest[@]+"${rest[@]}"}"; do case "$a" in -*) ;; *) proj="$a" ;; esac; done
-  if [ -z "$ON" ] && [ -n "$proj" ]; then
-    case "$cmd" in open|close) ON="$(machine_of "$proj")" ;; esac
-  fi
-  if [ "$cmd" = open ] && [ -n "$proj" ]; then check_elsewhere "$proj" "${ON:-$LOCAL_MACHINE}"; fi
   if [ -n "$ON" ] && [ "$ON" != "$LOCAL_MACHINE" ]; then
     remote_run "$ON" "$cmd" "${rest[@]+"${rest[@]}"}"
     exit $?

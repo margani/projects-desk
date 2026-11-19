@@ -211,7 +211,7 @@ exit 0
   try { stdinTar = execFileSync('cat', [join(dir, 'ssh.stdin')], { encoding: 'utf8' }); } catch { /* nothing was streamed */ }
   return { ...r, log, stdinTar };
 }
-const twoMachines = { machines: { 'hm-pc': { ssh: 'laptop', projects_dir: 'projects/personal' } }, project_machines: { demo: 'hm-pc' } };
+const twoMachines = { machines: { 'hm-pc': { ssh: 'laptop', projects_dir: 'projects/personal' } } };
 
 test('rc.sh: close --on runs the same script on that machine over ssh, from its own checkout', linuxOnly, () => {
   const r = machines({ config: twoMachines, sshReply: { laptop: 'demo closed\n' }, args: ['close', '--on', 'hm-pc', 'demo'] });
@@ -224,9 +224,10 @@ test('rc.sh: close --on runs the same script on that machine over ssh, from its 
   assert.doesNotMatch(r.log, /--on/);
 });
 
-test('rc.sh: open uses the machine the project has in the config', linuxOnly, () => {
-  const r = machines({ config: twoMachines, sshReply: { laptop: 'closed\n' }, args: ['open', 'demo'] });
-  assert.match(r.log, /rc\.sh open demo/);
+test('rc.sh: open without --on stays on this machine, whatever the config says', linuxOnly, () => {
+  const r = machines({ config: { ...twoMachines, project_machines: { nosuch: 'hm-pc' } }, sshReply: { laptop: 'closed\n' }, args: ['open', 'nosuch'] });
+  assert.equal(r.log, '');
+  assert.match(r.stderr, /no project folder 'nosuch'/);
 });
 
 test('rc.sh: a machine that is off gives a clear message and a nonzero exit, never a hang', linuxOnly, () => {
@@ -235,17 +236,10 @@ test('rc.sh: a machine that is off gives a clear message and a nonzero exit, nev
   assert.match(r.stderr, /machine hm-pc \(laptop\) is unreachable/);
 });
 
-test('rc.sh: a project open on another machine is not opened here', linuxOnly, () => {
-  const config = { machines: { 'hm-pc': { ssh: 'laptop' } } };
-  const r = machines({ config, sshReply: { laptop: 'open\n' }, args: ['open', 'demo'] });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /demo is already open on hm-pc/);
-});
-
-test('rc.sh: an unreachable machine does not block opening elsewhere, but is warned about', linuxOnly, () => {
-  const config = { machines: { 'hm-pc': { ssh: 'laptop' } } };
-  const r = machines({ config, args: ['open', '--on', 'claude', 'nosuch'] });
-  assert.match(r.stderr, /could not check whether nosuch is open on hm-pc/);
+test('rc.sh: a session of the same project on another machine does not stop open here', linuxOnly, () => {
+  const r = machines({ config: twoMachines, sshReply: { laptop: 'open\n' }, args: ['open', 'nosuch'] });
+  assert.equal(r.log, '');
+  assert.doesNotMatch(r.stderr, /already open on/);
 });
 
 test('rc.sh: an unknown machine is refused', linuxOnly, () => {
@@ -261,12 +255,12 @@ test('rc.sh: list shows a machine column and one row for a machine that is off',
   assert.match(r.stdout, /^hm-pc\s+unreachable:/m);
 });
 
-test('config: machines and project_machines are checked', async () => {
+test('config: machines are checked, and a leftover project_machines is ignored', async () => {
   const { checkDeskConfig } = await import('../scripts/lib/config.mjs');
   const base = { d1: { account: 'a'.repeat(32), database: '11111111-1111-4111-8111-111111111111' }, domains: ['desk.example.com'] };
   assert.deepEqual(checkDeskConfig({ ...base, ...twoMachines }), []);
   assert.deepEqual(checkDeskConfig(base), []);
-  assert.match(checkDeskConfig({ ...base, project_machines: { demo: 'typo' } }).join(), /machine "typo" is not in machines/);
+  assert.deepEqual(checkDeskConfig({ ...base, project_machines: { demo: 'typo' } }), []);
   assert.match(checkDeskConfig({ ...base, machines: { 'a b': {} } }).join(), /not a plain machine name/);
   assert.match(checkDeskConfig({ ...base, machines: { x: { ssh: '-oProxyCommand=evil' } } }).join(), /plain ssh host alias/);
 });
