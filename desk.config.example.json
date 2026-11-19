@@ -5,6 +5,17 @@
     "database": "YOUR_D1_DATABASE_ID",
     "name": "projects-desk"
   },
-  "domains": ["desk.example.com"],
-  "claude": false
+  "domains": [
+    "desk.example.com"
+  ],
+  "claude": false,
+  "machines": {
+    "laptop": {
+      "ssh": "laptop",
+      "projects_dir": "projects/personal"
+    }
+  },
+  "project_machines": {
+    "some-project": "laptop"
+  }
 }

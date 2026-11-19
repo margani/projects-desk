@@ -177,3 +177,104 @@ test('rc.sh: open starts fresh; open --resume passes RC_RESUME=1 to the window',
   const resumed = rc(`session_cmd demo 1`, {});
   assert.match(resumed, /RC_RESUME=1 .*rc-session\.sh demo --permission-mode/);
 });
+
+// --- other machines (#27) -----------------------------------------------------
+// rc.sh itself runs, with a fake ssh that records what it was asked and answers
+// per host from files, and a fake tmux that has no windows (nothing local is open).
+function machines({ config, sshReply = {}, args }) {
+  const dir = mkdtempSync(join(tmpdir(), 'rc-machines-'));
+  for (const d of ['bin', 'sessions', 'status', 'work']) mkdirSync(join(dir, d));
+  mkdirSync(join(dir, 'work', 'demo'));
+  writeFileSync(join(dir, 'work', 'demo', 'CLAUDE.md'), '');
+  writeFileSync(join(dir, 'status', 'demo.json'), '{}');
+  writeFileSync(join(dir, 'bin', 'tmux'), '#!/bin/sh\nexit 1\n');
+  // argv: ssh -o .. -o .. -- <alias> <remote command>
+  writeFileSync(join(dir, 'bin', 'ssh'), `#!/bin/bash
+while [ "$1" != -- ]; do shift; done; shift
+host="$1"; shift
+echo "$host $*" >> "${dir}/ssh.log"
+tar -tf - >> "${dir}/ssh.stdin" 2>/dev/null
+[ -f "${dir}/reply-$host" ] || exit 255
+cat "${dir}/reply-$host"
+exit 0
+`);
+  for (const f of ['tmux', 'ssh']) chmodSync(join(dir, 'bin', f), 0o755);
+  writeFileSync(join(dir, 'desk.config.json'), JSON.stringify(config));
+  for (const [host, text] of Object.entries(sshReply)) writeFileSync(join(dir, `reply-${host}`), text);
+  const r = spawnSync('bash', [RC, ...args], {
+    env: { ...process.env, PATH: `${dir}/bin:${process.env.PATH}`, CLAUDE_CONFIG_DIR: dir, RC_STATUS_DIR: join(dir, 'status'), PROJECTS_DIR: join(dir, 'work'), RC_CONFIG: join(dir, 'desk.config.json'), RC_SSH_TIMEOUT: '2' },
+    encoding: 'utf8',
+  });
+  let log = '';
+  try { log = execFileSync('cat', [join(dir, 'ssh.log')], { encoding: 'utf8' }); } catch { /* ssh was never called */ }
+  let stdinTar = '';
+  try { stdinTar = execFileSync('cat', [join(dir, 'ssh.stdin')], { encoding: 'utf8' }); } catch { /* nothing was streamed */ }
+  return { ...r, log, stdinTar };
+}
+const twoMachines = { machines: { 'hm-pc': { ssh: 'laptop', projects_dir: 'projects/personal' } }, project_machines: { demo: 'hm-pc' } };
+
+test('rc.sh: close --on runs the same script on that machine over ssh, from its own checkout', linuxOnly, () => {
+  const r = machines({ config: twoMachines, sshReply: { laptop: 'demo closed\n' }, args: ['close', '--on', 'hm-pc', 'demo'] });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.log, /^laptop .*RC_MACHINE=hm-pc PROJECTS_DIR="\$HOME"\/projects\/personal RC_STATUS_DIR="\$HOME"\/projects\/personal\/projects-dashboard\/status "\$d"\/scripts\/rc\.sh close demo\b/);
+  // the scripts are streamed, not cloned: the remote command unpacks them first
+  assert.match(r.log, /tar -xf - -C/);
+  assert.match(r.log, /PATH="\$HOME\/\.local\/bin:\$PATH"/);
+  assert.equal(r.stdinTar.includes('scripts/rc.sh') && r.stdinTar.includes('scripts/rc-session.sh'), true);
+  assert.doesNotMatch(r.log, /--on/);
+});
+
+test('rc.sh: open uses the machine the project has in the config', linuxOnly, () => {
+  const r = machines({ config: twoMachines, sshReply: { laptop: 'closed\n' }, args: ['open', 'demo'] });
+  assert.match(r.log, /rc\.sh open demo/);
+});
+
+test('rc.sh: a machine that is off gives a clear message and a nonzero exit, never a hang', linuxOnly, () => {
+  const r = machines({ config: twoMachines, args: ['close', '--on', 'hm-pc', 'demo'] });
+  assert.equal(r.status, 4);
+  assert.match(r.stderr, /machine hm-pc \(laptop\) is unreachable/);
+});
+
+test('rc.sh: a project open on another machine is not opened here', linuxOnly, () => {
+  const config = { machines: { 'hm-pc': { ssh: 'laptop' } } };
+  const r = machines({ config, sshReply: { laptop: 'open\n' }, args: ['open', 'demo'] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /demo is already open on hm-pc/);
+});
+
+test('rc.sh: an unreachable machine does not block opening elsewhere, but is warned about', linuxOnly, () => {
+  const config = { machines: { 'hm-pc': { ssh: 'laptop' } } };
+  const r = machines({ config, args: ['open', '--on', 'claude', 'nosuch'] });
+  assert.match(r.stderr, /could not check whether nosuch is open on hm-pc/);
+});
+
+test('rc.sh: an unknown machine is refused', linuxOnly, () => {
+  const r = machines({ config: twoMachines, args: ['list', '--on', 'nowhere'] });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /machine 'nowhere' is not in/);
+});
+
+test('rc.sh: list shows a machine column and one row for a machine that is off', linuxOnly, () => {
+  const r = machines({ config: twoMachines, args: ['list'] });
+  assert.match(r.stdout, /^MACHINE\s+PROJECT\s+STATE/m);
+  assert.match(r.stdout, /^claude\s+demo\s+closed/m);
+  assert.match(r.stdout, /^hm-pc\s+unreachable:/m);
+});
+
+test('config: machines and project_machines are checked', async () => {
+  const { checkDeskConfig } = await import('../scripts/lib/config.mjs');
+  const base = { d1: { account: 'a'.repeat(32), database: '11111111-1111-4111-8111-111111111111' }, domains: ['desk.example.com'] };
+  assert.deepEqual(checkDeskConfig({ ...base, ...twoMachines }), []);
+  assert.deepEqual(checkDeskConfig(base), []);
+  assert.match(checkDeskConfig({ ...base, project_machines: { demo: 'typo' } }).join(), /machine "typo" is not in machines/);
+  assert.match(checkDeskConfig({ ...base, machines: { 'a b': {} } }).join(), /not a plain machine name/);
+  assert.match(checkDeskConfig({ ...base, machines: { x: { ssh: '-oProxyCommand=evil' } } }).join(), /plain ssh host alias/);
+});
+
+test('rc.sh: a session on another machine is named "<project> on <machine>", on this one just the project', linuxOnly, () => {
+  // session_cmd builds the window's command; the name it hands to rc-session.sh
+  // is what Remote Control lists, so the same project on two computers must differ.
+  const run = (machine) => spawnSync('bash', ['-c', `REPO=/r MODE=auto LOCAL_MACHINE=${machine}; eval "$(sed -n '/^session_cmd() {/,/^}/p' "${RC}")"; session_cmd cv`], { encoding: 'utf8' });
+  assert.match(run('hm-pc').stdout, /rc-session\.sh cv\\ on\\ hm-pc --permission-mode auto/);
+  assert.match(run('claude').stdout, /rc-session\.sh cv --permission-mode auto/);
+});

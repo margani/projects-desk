@@ -7,9 +7,18 @@ import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { query, planSync } from './lib/d1.mjs';
+import { readOptionalConfig } from './lib/config.mjs';
+import { pullRemoteStatus } from './lib/remote-status.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dir = path.join(root, 'status');
+// Projects that live on other machines: their status files are copied here
+// first. A failure is printed and the sync goes on with the last copies.
+try {
+  for (const line of await pullRemoteStatus(readOptionalConfig('desk.config.json', {}), dir)) console.log(line);
+} catch (err) {
+  console.log(`REMOTE: ${err.message}; syncing the last copies`);
+}
 const names = (await readdir(dir)).filter((f) => f.endsWith('.json')).sort();
 if (!names.length) {
   // An empty folder would delete every project from the page.

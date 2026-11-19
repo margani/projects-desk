@@ -13,10 +13,21 @@
 #   rc.sh open --resume <project> resume its last conversation instead
 #   rc.sh close <project>         /exit it; refuses while it is working
 #   rc.sh close --force <project> close it even while it is working
+#   rc.sh ... --on <machine>      run any of the above on another machine
+#                                 (desk.config.json `machines`); `claude` is
+#                                 this machine and the default
+#   rc.sh where <project>         prints open or closed on this machine
 #   rc.sh boot                    open the hub and every project in RC_KEEP_OPEN
 #                                 (what the login/boot unit runs)
 #   rc.sh close-idle              close every project idle RC_IDLE_HOURS (24),
 #                                 except those in RC_KEEP_OPEN
+#
+# Other machines: `open` and `close` use the machine the project has in
+# desk.config.json (`project_machines`, default this one) unless --on says
+# otherwise. A remote run is the same script over ssh, from that machine's own
+# copy of these scripts, streamed over the same ssh connection, so nothing has
+# to be cloned there.
+# A project is open on one machine at a time; `list` shows all of them.
 #
 # A project is a folder directly under PROJECTS_DIR with a status file or
 # earlier Claude Code conversations; `open` also takes a new git repo or
@@ -42,6 +53,9 @@ IDLE_HOURS="${RC_IDLE_HOURS:-24}"
 KEEP_OPEN="${RC_KEEP_OPEN:-}"
 STATUS_DIR="${RC_STATUS_DIR:-$REPO/status}"
 SESSIONS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+# This machine's name in desk.config.json, and the file that lists the others.
+LOCAL_MACHINE="${RC_MACHINE:-claude}"
+CONFIG="${RC_CONFIG:-$REPO/desk.config.json}"
 
 die() { echo "rc: $*" >&2; exit 1; }
 command -v tmux >/dev/null || die "tmux is not installed"
@@ -133,27 +147,101 @@ idle_hours() {
   echo $(( ($(date +%s) - at / 1000) / 3600 ))
 }
 
+# --- other machines ---------------------------------------------------------
+machine_field() { jq -r --arg m "$1" --arg f "$2" '.machines[$m][$f] // empty' "$CONFIG" 2>/dev/null; }
+# The machine a project runs on: its entry in project_machines, else this one.
+machine_of() {
+  local m=""
+  [ "$1" = hub ] || m="$(jq -r --arg p "$1" '.project_machines[$p] // empty' "$CONFIG" 2>/dev/null)"
+  echo "${m:-$LOCAL_MACHINE}"
+}
+remote_machines() { jq -r '.machines // {} | keys[]' "$CONFIG" 2>/dev/null | grep -vxF "$LOCAL_MACHINE"; }
+
+# Runs rc.sh on another machine. ssh gets a short connect timeout and no
+# password prompt: a laptop that is off or asleep must fail in seconds with a
+# message, not hang the caller (exit 4). Names from the config go into a remote
+# shell command, so they are checked first.
+remote_run() {
+  local m="$1" alias pdir rc; shift
+  [[ "$m" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "'$m' is not a machine name"
+  jq -e --arg m "$m" '.machines[$m]' "$CONFIG" >/dev/null 2>&1 ||
+    die "machine '$m' is not in $CONFIG (machines: $LOCAL_MACHINE $(remote_machines | tr '\n' ' '))"
+  alias="$(machine_field "$m" ssh)"; alias="${alias:-$m}"
+  pdir="$(machine_field "$m" projects_dir)"; pdir="${pdir:-projects/personal}"
+  [[ "$alias" =~ ^[A-Za-z0-9][A-Za-z0-9._@-]*$ ]] || die "machine $m: ssh alias '$alias' is not plain"
+  [[ "$pdir" =~ ^[A-Za-z0-9._/-]+$ ]] || die "machine $m: projects_dir '$pdir' must be a path under the home folder"
+  # ssh runs a non-interactive shell, whose PATH lacks ~/.local/bin, where the
+  # native Claude Code installer puts `claude` (found missing on the first laptop).
+  # The two scripts travel over the same ssh connection into a cache folder on
+  # that machine, so nothing has to be cloned there and it always runs the
+  # version from this machine. The remote paths are its own projects folder
+  # and the status folder its sessions write to.
+  tar -C "$REPO" -cf - scripts/rc.sh scripts/rc-session.sh |
+    ssh -o BatchMode=yes -o ConnectTimeout="${RC_SSH_TIMEOUT:-5}" -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+      -- "$alias" "PATH=\"\$HOME/.local/bin:\$PATH\"; d=\"\$HOME/.cache/projects-desk-rc\"; mkdir -p \"\$d\" && tar -xf - -C \"\$d\" && RC_MACHINE=$(printf %q "$m") PROJECTS_DIR=\"\$HOME\"/$(printf %q "$pdir") RC_STATUS_DIR=\"\$HOME\"/$(printf %q "$pdir")/projects-dashboard/status \"\$d\"/scripts/rc.sh $(printf '%q ' "$@")"
+  rc=${PIPESTATUS[1]}
+  if [ "$rc" -eq 255 ]; then
+    echo "rc: machine $m ($alias) is unreachable: off, asleep, or ssh refused" >&2
+    return 4
+  fi
+  return "$rc"
+}
+
+# One project is open on one machine at a time: refuse to open it on $2 while
+# another machine has it. A machine that cannot be reached is warned about,
+# not trusted blindly and not fatal, since a machine that is off holds no
+# session.
+check_elsewhere() {
+  local p="$1" target="$2" m state
+  [ "$p" = hub ] && return 0
+  for m in "$LOCAL_MACHINE" $(remote_machines); do
+    [ "$m" = "$target" ] && continue
+    if [ "$m" = "$LOCAL_MACHINE" ]; then
+      state="$([ -n "$(claude_pid "$p")" ] && echo open || echo closed)"
+    else
+      state="$(remote_run "$m" where "$p" 2>/dev/null)" || { echo "rc: warning: could not check whether $p is open on $m (unreachable)" >&2; continue; }
+    fi
+    [ "$state" = open ] && die "$p is already open on $m; close it there first (rc.sh close --on $m $p)"
+  done
+  return 0
+}
+
 cmd_list() {
-  printf '%-18s %-8s %-8s %-6s %s\n' PROJECT STATE STATUS IDLE SESSION
+  printf '%-10s %-18s %-8s %-8s %-6s %s\n' MACHINE PROJECT STATE STATUS IDLE SESSION
   for p in hub $(projects); do
     local pid st
     pid="$(claude_pid "$p")"
     if [ -z "$pid" ]; then
-      printf '%-18s %-8s %-8s %-6s %s\n' "$p" closed "" "" "$(has_status "$p" || echo "(no status file yet)")"
+      printf '%-10s %-18s %-8s %-8s %-6s %s\n' "$LOCAL_MACHINE" "$p" closed "" "" "$(has_status "$p" || echo "(no status file yet)")"
       continue
     fi
     st="$(info "$pid" '.status // "starting"')"
     trust_prompt "$p" && st="needs-trust"
-    printf '%-18s %-8s %-8s %-6s %s%s\n' "$p" open "$st" "$(idle_hours "$pid")h" "$(info "$pid" '.name // "-"')" \
+    printf '%-10s %-18s %-8s %-8s %-6s %s%s\n' "$LOCAL_MACHINE" "$p" open "$st" "$(idle_hours "$pid")h" "$(info "$pid" '.name // "-"')" \
       "$(if [ "$p" != hub ] && ! has_status "$p"; then echo "  (no status file yet)"; fi)"
   done
+  # Every configured machine, minus its header; one that is off is one row.
+  local m out
+  for m in $(remote_machines); do
+    if out="$(remote_run "$m" list 2>&1)"; then
+      echo "$out" | tail -n +2
+    else
+      printf '%-10s %s\n' "$m" "unreachable: $(echo "$out" | tail -n1 | sed "s/^rc: //")"
+    fi
+  done
 }
+
+cmd_where() { [ -n "$(claude_pid "${1:?usage: rc.sh where <project>}")" ] && echo open || echo closed; }
 
 # The window's command. Every part is shell-quoted: tmux runs this string
 # through the shell. A non-empty second argument resumes.
 session_cmd() {
-  local p="$1" resume="${2:-}"
-  printf '%s%s' "${resume:+RC_RESUME=1 }" "$(printf '%q ' "$REPO/scripts/rc-session.sh" "$p" --permission-mode "$MODE")"
+  local p="$1" resume="${2:-}" shown="$1"
+  # On another machine the session is "<project> on <machine>", so the Remote
+  # Control list tells apart the same project on two computers. The tmux window
+  # keeps the plain project name, which every lookup here relies on.
+  [ "$LOCAL_MACHINE" != claude ] && shown="$p on $LOCAL_MACHINE"
+  printf '%s%s' "${resume:+RC_RESUME=1 }" "$(printf '%q ' "$REPO/scripts/rc-session.sh" "$shown" --permission-mode "$MODE")"
   printf '; exec "${SHELL:-bash}"'
 }
 
@@ -274,9 +362,34 @@ cmd_boot() {
   return $rc
 }
 
+# --on <machine> may stand anywhere after the command. open and close go to
+# the project's own machine unless it is given; everything else stays here.
+if [ $# -gt 0 ]; then
+  cmd="$1"; shift
+  ON=""; rest=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --on) [ -n "${2:-}" ] || die "--on needs a machine name"; ON="$2"; shift 2 ;;
+      *) rest+=("$1"); shift ;;
+    esac
+  done
+  proj=""
+  for a in "${rest[@]+"${rest[@]}"}"; do case "$a" in -*) ;; *) proj="$a" ;; esac; done
+  if [ -z "$ON" ] && [ -n "$proj" ]; then
+    case "$cmd" in open|close) ON="$(machine_of "$proj")" ;; esac
+  fi
+  if [ "$cmd" = open ] && [ -n "$proj" ]; then check_elsewhere "$proj" "${ON:-$LOCAL_MACHINE}"; fi
+  if [ -n "$ON" ] && [ "$ON" != "$LOCAL_MACHINE" ]; then
+    remote_run "$ON" "$cmd" "${rest[@]+"${rest[@]}"}"
+    exit $?
+  fi
+  set -- "$cmd" "${rest[@]+"${rest[@]}"}"
+fi
+
 case "${1:-}" in
   boot) cmd_boot ;;
   list) cmd_list ;;
+  where) shift; cmd_where "$@" ;;
   open) shift; cmd_open "$@" ;;
   close) shift; cmd_close "$@" ;;
   close-idle) cmd_close_idle ;;
