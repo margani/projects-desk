@@ -349,3 +349,8 @@ Each remote machine needs: sshd on and your key accepted (`ssh <alias> true`
 works without a prompt), `tmux`, `claude`, `git`, `gh` logged in, a GPG signing
 key if you sign commits, this repository cloned at `repo`, and the project
 cloned next to it. Code moves between machines through GitHub only.
+
+A project's status file is written on its own machine. Before every sync, the
+desk copies it over ssh when the remote copy is newer; a machine that is off
+leaves the last copy in place, and the sync prints a `REMOTE <machine>: ...`
+line (no desktop notice).
