@@ -79,3 +79,14 @@ test('remote status: the remote output is parsed marker by marker', () => {
   assert.deepEqual(files.map((f) => [f.project, f.mtime]), [['a', 1], ['b', 2]]);
   assert.equal(JSON.parse(files[0].text).x, 1);
 });
+
+test('remote status: machines are asked in parallel, so two that are off cost one timeout, not two (#37)', async () => {
+  const two = { machines: { a: {}, b: {} } };
+  let running = 0, peak = 0;
+  const run = async () => { running++; peak = Math.max(peak, running); await new Promise((r) => setTimeout(r, 30)); running--; return { code: 255, stdout: '', stderr: '' }; };
+  const log = await pullRemoteStatus(two, folder(), { run });
+  assert.equal(peak, 2);
+  assert.equal(log.length, 2);
+  assert.match(log[0], /^REMOTE a:/);
+  assert.match(log[1], /^REMOTE b:/);
+});
