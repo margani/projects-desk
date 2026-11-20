@@ -50,12 +50,19 @@ export function parseRemote(stdout) {
  */
 export async function pullRemoteStatus(config, statusDir, { run = runProgram, timeoutSeconds = 5 } = {}) {
   const log = [];
-  for (const machine of remoteMachines(config)) {
+  // All machines are asked at once: a laptop that is off costs one ConnectTimeout in
+  // total, not one per machine (two off laptops delayed every sync by 10 s, #37).
+  // Results are applied in config order, so the newest-wins rule stays deterministic.
+  const asked = remoteMachines(config).map((machine) => {
     const spec = config.machines[machine] ?? {};
     const alias = spec.ssh ?? machine;
     const projectsDir = spec.projects_dir ?? 'projects/personal';
-    if (!ALIAS.test(alias) || !DIR.test(projectsDir)) { log.push(`REMOTE ${machine}: ssh alias or projects_dir is not plain; skipped`); continue; }
-    const r = await run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(projectsDir)]);
+    if (!ALIAS.test(alias) || !DIR.test(projectsDir)) return { machine, skipped: true };
+    return { machine, reply: run('ssh', ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${timeoutSeconds}`, '--', alias, remoteCommand(projectsDir)]) };
+  });
+  for (const { machine, skipped, reply } of asked) {
+    if (skipped) { log.push(`REMOTE ${machine}: ssh alias or projects_dir is not plain; skipped`); continue; }
+    const r = await reply;
     if (r.code !== 0) { log.push(`REMOTE ${machine}: unreachable or failed (exit ${r.code}); keeping the last copies`); continue; }
     for (const f of parseRemote(r.stdout)) {
       if (!PLAIN.test(f.project)) continue;
