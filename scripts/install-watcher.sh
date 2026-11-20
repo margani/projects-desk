@@ -6,6 +6,10 @@
 # Usage: scripts/install-watcher.sh                  install / update
 #        scripts/install-watcher.sh --with-sessions  also the tmux Remote Control sessions
 #        scripts/install-watcher.sh --uninstall
+#        scripts/install-watcher.sh --only-users     the always-on container `services`: just the users timer
+#        scripts/install-watcher.sh --skip-users     the sessions' computer: everything except the users timer
+# The users timer reads only D1 and runs on `services`; the others read files that
+# sessions write on `claude`, so they stay there (#39).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,9 +37,30 @@ if [[ "${1:-}" == "--uninstall" ]]; then
 fi
 
 WITH_SESSIONS=0
-if [[ "${1:-}" == "--with-sessions" ]]; then WITH_SESSIONS=1; UNITS+=("${SESSION_UNITS[@]}"); fi
+ONLY_USERS=0
+SKIP_USERS=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-sessions) WITH_SESSIONS=1; UNITS+=("${SESSION_UNITS[@]}") ;;
+    --only-users) ONLY_USERS=1 ;;
+    --skip-users) SKIP_USERS=1 ;;
+    *) echo "Unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
+(( ONLY_USERS && (SKIP_USERS || WITH_SESSIONS) )) && { echo "--only-users cannot be combined with the other options" >&2; exit 2; }
+if (( ONLY_USERS )); then
+  UNITS=(projects-dashboard-users.service projects-dashboard-users.timer)
+elif (( SKIP_USERS )); then
+  kept=()
+  for u in "${UNITS[@]}"; do [[ "$u" == projects-dashboard-users.* ]] || kept+=("$u"); done
+  UNITS=("${kept[@]}")
+  # A re-run on the sessions' computer must not bring back a timer that moved.
+  systemctl --user disable --now projects-dashboard-users.timer || true
+  rm -f "$UNIT_DIR/projects-dashboard-users.service" "$UNIT_DIR/projects-dashboard-users.timer"
+fi
 
 required=(git flock systemctl node gh)
+(( ONLY_USERS )) && required=(systemctl node)
 (( WITH_SESSIONS )) && required+=(tmux claude)
 for cmd in "${required[@]}"; do
   command -v "$cmd" >/dev/null || { echo "Missing required command: $cmd" >&2; exit 1; }
@@ -54,6 +79,12 @@ done
 chmod +x "$REPO/scripts/publish-status.sh" "$REPO/scripts/rc.sh"
 
 systemctl --user daemon-reload
+if (( ONLY_USERS )); then
+  systemctl --user enable --now projects-dashboard-users.timer
+  systemctl --user list-timers --no-pager projects-dashboard-users.timer | head -3
+  echo "User numbers (daily): journalctl --user -u projects-dashboard-users"
+  exit 0
+fi
 # The path unit needs an inotify instance; when the user's are all taken it
 # fails, and the 2-minute timer keeps publishing. Neither stops the install.
 systemctl --user enable projects-dashboard-publish.path
@@ -64,7 +95,7 @@ fi
 systemctl --user enable --now projects-dashboard-publish.timer
 systemctl --user enable --now projects-dashboard-activity.timer
 systemctl --user enable --now projects-dashboard-usage.timer
-systemctl --user enable --now projects-dashboard-users.timer
+(( SKIP_USERS )) || systemctl --user enable --now projects-dashboard-users.timer
 if (( WITH_SESSIONS )); then
 systemctl --user enable --now claude-rc-idle.timer
 # Enabled for the next login or boot; started now only if the hub is not open.
@@ -79,8 +110,10 @@ systemctl --user list-timers --no-pager projects-dashboard-activity.timer | head
 echo "Daily activity logs: journalctl --user -u projects-dashboard-activity"
 systemctl --user list-timers --no-pager projects-dashboard-usage.timer | head -3
 echo "Usage logs (every 10 minutes): journalctl --user -u projects-dashboard-usage"
-systemctl --user list-timers --no-pager projects-dashboard-users.timer | head -3
-echo "User numbers (daily): journalctl --user -u projects-dashboard-users"
+if (( ! SKIP_USERS )); then
+  systemctl --user list-timers --no-pager projects-dashboard-users.timer | head -3
+  echo "User numbers (daily): journalctl --user -u projects-dashboard-users"
+fi
 if (( WITH_SESSIONS )); then
   systemctl --user list-timers --no-pager claude-rc-idle.timer | head -3
   echo "Sessions: scripts/rc.sh list; idle closes: journalctl --user -u claude-rc-idle"

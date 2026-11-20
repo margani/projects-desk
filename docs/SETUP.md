@@ -282,6 +282,14 @@ A failed publish loses nothing, and you get one desktop notice per outage, after
 about 30 minutes. Logs: `journalctl --user -u projects-dashboard-publish -f`.
 `scripts/install-watcher.sh --uninstall` removes everything.
 
+The users timer reads only D1 (the projects' databases with the `read` token, the
+dashboard's with the `edit` token), so it can run on a different, always-on
+machine from the others, which read files that sessions write locally.
+On that machine install just it, after cloning the repository and saving the
+tokens and `desk.config.json` and `users.config.json` there:
+`scripts/install-watcher.sh --only-users`. On the sessions' machine run the
+installer with `--skip-users`, or a re-run brings the timer back.
+
 To keep the timers running while you are logged out, enable lingering with
 `loginctl enable-linger "$USER"`.
 

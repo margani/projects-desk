@@ -48,6 +48,11 @@ node scripts/watch.mjs --status   # the Windows/macOS runner: also --background,
 - `scripts/lib/remote-status.mjs`: before each sync, copies status files of projects
   on the machines in `machines` over ssh, when the remote copy is
   newer. Failures print `REMOTE ...` lines and never fail the sync.
+- Where the timers run (#39): `projects-dashboard-users` runs in the always-on
+  container `services`, installed with `scripts/install-watcher.sh --only-users`;
+  it needs only D1 and the `read`/`edit` tokens. `publish`, `activity` and
+  `usage` stay with the sessions (`--skip-users` there): they read status files,
+  git checkouts and Claude credentials that live on `claude`.
 - `scripts/sync-status.mjs`, `usage-sync.mjs`, `users-sync.mjs`,
   `activity-all.mjs`: collectors run by the timers in `scripts/systemd/`.
   Each failed source keeps its last good numbers and shows a problem.
