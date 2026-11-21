@@ -217,10 +217,24 @@ const failed = (group, names, kind, problem) => names.map((name) => ({
 }));
 
 /** `cfapi` (read token) → parsed JSON; it exits 1 and still prints JSON when success is false. */
-async function cfapi(args, exec) {
+// usage-sync starts every collector at once, and under that burst the local
+// resolver answered "Could not resolve host" to every R2 call on every run
+// (2026-11-21), though the same call alone always worked. A name lookup or
+// connect failure is retried; an answer from Cloudflare never is.
+const CONNECT_FAILED = /curl: \((6|7)\)/;
+export const CF_RETRY = { retries: 3, wait: 1500 };
+async function cfapi(args, exec, { retries, wait } = CF_RETRY) {
   let stdout;
   try {
-    ({ stdout } = await exec('cfapi', args, { timeout: TIMEOUTS.cloudflare }));
+    for (let attempt = 0; ; attempt++) {
+      try {
+        ({ stdout } = await exec('cfapi', args, { timeout: TIMEOUTS.cloudflare }));
+        break;
+      } catch (err) {
+        if (attempt >= retries || !CONNECT_FAILED.test(`${err.stderr ?? ''}${err.message ?? ''}`)) throw err;
+        await new Promise((r) => setTimeout(r, wait * (attempt + 1)));
+      }
+    }
   } catch (err) {
     const body = (() => { try { return JSON.parse(err.stdout); } catch { return null; } })();
     if (body?.errors?.length) err.message = body.errors.map((x) => `${x.code}: ${x.message}`).join('; ');
@@ -384,13 +398,17 @@ function disabledRows(src) {
  */
 export async function collectStorage(sources, { now = Date.now(), exec = run, home = homedir(), platform = process.platform, statfs = statfsAsync } = {}) {
   const groups = await Promise.all(sources.map(async (src) => {
-    if (src.enabled === false) return disabledRows(src);
+    // `section` is the heading the page files the card under (physical devices,
+    // cloud storage, ...). It is stamped here so every collector, and a failed
+    // one, carries it without knowing about it.
+    const tag = (rows) => (src.section ? rows.map((r) => ({ ...r, section: src.section })) : rows);
+    if (src.enabled === false) return tag(disabledRows(src));
     const collect = COLLECTORS[src.kind];
-    if (!collect) return failed(src.name, [src.name], src.kind, `unknown source kind "${src.kind}"`);
+    if (!collect) return tag(failed(src.name, [src.name], src.kind, `unknown source kind "${src.kind}"`));
     try {
-      return await collect(src, { exec, now, home, platform, statfs });
+      return tag(await collect(src, { exec, now, home, platform, statfs }));
     } catch (err) {
-      return failed(src.name, [src.name], src.kind, explain(err, src.kind));
+      return tag(failed(src.name, [src.name], src.kind, explain(err, src.kind)));
     }
   }));
   return {
@@ -415,7 +433,8 @@ export function carryForward(current, previous) {
     sources: current.sources.map((s) => {
       const old = last.get(key(s));
       if (s.used != null || s.disabled || s.problem === 'not mounted' || !old) return s;
-      return { ...old, problem: s.problem, read_at: old.read_at ?? previous.generated_at };
+      // The section comes from today's config, not from the old reading, which may predate sections.
+      return { ...old, section: s.section, problem: s.problem, read_at: old.read_at ?? previous.generated_at };
     }),
   };
 }

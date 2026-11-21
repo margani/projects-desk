@@ -589,6 +589,8 @@ p.users-line { font-size: 13.5px; }
 .usage { padding-bottom: 16px; margin-bottom: 18px; }
 .usage h2 { margin: 0 0 14px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
 .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.storage-section { margin: 18px 0 8px; font-size: 13px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.storage-section:first-of-type { margin-top: 0; }
 .usage-account { background: var(--tint); border-radius: 12px; padding: 12px 14px; min-width: 0; }
 .usage-account h3 { margin: 0 0 10px; font-size: 15px; font-weight: 650; }
 .usage-problem { margin: 0; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }

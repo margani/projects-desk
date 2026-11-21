@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { run, parseDf, laptopRows, remoteDfRows, rcloneRow, d1Row, r2Row, d1Plan, collectStorage, carryForward, explain, D1_LIMITS } from '../scripts/lib/storage-usage.mjs';
+import { run, parseDf, laptopRows, remoteDfRows, rcloneRow, d1Row, r2Row, d1Plan, collectStorage, carryForward, explain, CF_RETRY, D1_LIMITS } from '../scripts/lib/storage-usage.mjs';
 import { renderStorage, renderStorageAlert, storageLevel, bytes } from '../scripts/lib/storage-render.mjs';
 import { build } from '../scripts/build.mjs';
 
@@ -412,4 +412,53 @@ test('storage: a source that fails keeps its last reading with its time; "not mo
   assert.match(row, /8\.79 GB of 2\.20 TB/);
   assert.match(row, /Last reading<\/span><time datetime="2026-10-20T11:50:00Z" data-rel[^>]*>10 minutes ago<\/time> · my-gdrive: no answer after 45 s/);
   assert.ok(!row.includes('Not read<'), 'no empty Not read row');
+});
+
+test('storage: sources carry their section and the page groups cards under section headings', async () => {
+  const now = Date.parse('2026-11-21T12:00:00Z');
+  const exec = async () => { throw new Error('boom'); };
+  const out = await collectStorage([
+    { name: 'Box', kind: 'ssh', host: 'box', paths: [{ path: '/' }], section: 'Physical devices' },
+    { name: 'Disk', kind: 'rclone', remotes: [{ remote: 'r' }], section: 'Cloud storage' },
+    { name: 'Edge', kind: 'nope', section: 'Cloudflare storages' },
+  ], { now, exec, home: '/home/user', platform: 'linux' });
+  assert.ok(out.sources.length > 0);
+  assert.deepEqual(out.sources.map((s) => s.section), ['Physical devices', 'Cloud storage', 'Cloudflare storages'], 'failed rows carry it too');
+  const html = renderStorage(out, now);
+  const heads = [...html.matchAll(/<h3 class="storage-section">([^<]+)<\/h3>/g)].map((m) => m[1]);
+  assert.deepEqual(heads, ['Physical devices', 'Cloud storage', 'Cloudflare storages']);
+  assert.equal([...html.matchAll(/<div class="usage-grid">/g)].length, 3, 'one grid per section');
+  // Data written before sections existed still renders, without headings.
+  assert.ok(!renderStorage({ generated_at: out.generated_at, sources: out.sources.map(({ section, ...r }) => r) }, now).includes('storage-section'));
+});
+
+test('storage: a carried-forward reading takes its section from the current config', () => {
+  const old = { generated_at: '2026-11-21T11:00:00Z', sources: [{ group: 'Cloudflare R2', name: 'A', kind: 'R2', used: 5, total: 10, percent: 50, problem: null }] };
+  const cur = { generated_at: '2026-11-21T12:00:00Z', sources: [{ group: 'Cloudflare R2', name: 'A', kind: 'R2', used: null, total: null, percent: null, problem: 'dns', section: 'Cloudflare storages' }] };
+  const [row] = carryForward(cur, old).sources;
+  assert.equal(row.used, 5);
+  assert.equal(row.section, 'Cloudflare storages');
+});
+
+test('storage: a name lookup that fails under load is retried; a Cloudflare answer is not', async () => {
+  const keep = { ...CF_RETRY };
+  CF_RETRY.wait = 1;
+  try {
+    const src = [{ name: 'Cloudflare R2', kind: 'r2', accounts: [{ id: 'acc', name: 'A' }] }];
+    const dns = Object.assign(new Error('Command failed: cfapi'), { code: 6, stderr: 'curl: (6) Could not resolve host: api.cloudflare.com\n' });
+    let calls = 0;
+    const flaky = async (cmd, args) => {
+      if (cmd !== 'cfapi') throw new Error(`unexpected ${cmd}`);
+      if (++calls <= 2) throw dns;
+      return { stdout: JSON.stringify(args[1].includes('/graphql') ? { data: { viewer: { accounts: [{ r2StorageAdaptiveGroups: [] }] } } } : { success: true, result: { buckets: [] } }) };
+    };
+    const [row] = (await collectStorage(src, { now, exec: flaky })).sources;
+    assert.equal(row.problem, null, 'two lookup failures are survived');
+    assert.ok(calls > 2);
+    let n = 0;
+    const denied = async () => { n++; throw Object.assign(new Error('Command failed: cfapi'), { code: 1, stdout: JSON.stringify({ success: false, errors: [{ code: 10000, message: 'Authentication error' }] }) }); };
+    const [bad] = (await collectStorage(src, { now, exec: denied })).sources;
+    assert.equal(bad.problem, 'Cloudflare API: 10000: Authentication error');
+    assert.ok(n <= 3, 'an answer from Cloudflare is not retried');
+  } finally { Object.assign(CF_RETRY, keep); }
 });
