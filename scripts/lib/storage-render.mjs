@@ -87,20 +87,30 @@ function renderRow(s, now) {
 
 export function renderStorage(storage, now) {
   if (!storage?.sources?.length) return '';
-  const groups = new Map();
+  // Sections keep the order of the first source that names them; rows without
+  // one (data written before sections existed) form a heading-less section.
+  const sections = new Map();
   for (const s of storage.sources) {
+    const sec = s.section ?? '';
+    if (!sections.has(sec)) sections.set(sec, new Map());
+    const groups = sections.get(sec);
     if (!groups.has(s.group)) groups.set(s.group, []);
     groups.get(s.group).push(s);
   }
-  const cards = [...groups].map(([name, rows]) => `
+  const body = [...sections].map(([sec, groups]) => {
+    const cards = [...groups].map(([name, rows]) => `
     <div class="usage-account">
       <h3>${e(name)}</h3>${rows.map((s) => renderRow(s, now)).join('')}
     </div>`).join('');
+    return `${sec ? `
+    <h3 class="storage-section">${e(sec)}</h3>` : ''}
+    <div class="usage-grid">${cards}
+    </div>`;
+  }).join('');
   return `
   <section class="panel usage storage" aria-labelledby="storage-heading">
     <h2 id="storage-heading" tabindex="-1">Storage</h2>
-    <div class="usage-grid">${cards}
-    </div>
+${body}
     <p class="viz-foot"><span>Disks: % used as df shows it (space kept for root not counted as free). Trash counts as used until it is emptied. D1: the bar is the database or account closest to its limit. R2: largest size held in the last day.</span><span>Read <time datetime="${e(storage.generated_at)}" data-rel title="${e(storage.generated_at)}">${e(relativeTime(storage.generated_at, now))}</time></span></p>
   </section>`;
 }
