@@ -47,10 +47,45 @@ Every tab, with demo data and with the optional Claude tab turned on.
 - A Cloudflare account with a domain on it. The Worker, D1 and Access all run on
   Cloudflare.
 - Claude Code, for the sessions that write the status files.
+- Optional, Linux only: [agy](#sessions-with-agy), if you want `rc.sh` to open
+  sessions with Google's Antigravity CLI as well.
 
 The page lists private issue titles, so it must not be public. The setup puts it
 behind Cloudflare Access, and `npm run deploy` fails if a custom domain answers
 without an Access login.
+
+### Sessions with agy
+
+`scripts/rc.sh open --agent agy <project>` opens a project with agy (Google
+Antigravity CLI) instead of Claude Code, which stays the default. It starts agy
+in a window of its own tmux session, `agy-rc`, and prints the
+`https://antigravity.google.com/r/<id>` link that lets you watch and drive the
+session from the browser. `rc.sh list` shows both kinds, with an AGENT column,
+and `rc.sh close --force --agent agy <project>` ends an agy session (agy does not say
+whether it is working, so a plain `close` refuses; `--agent agy` matters when the
+project also has a Claude Code session, which `close` picks otherwise). The link stays the same
+when the same folder is reopened. Idle-close never touches agy sessions.
+
+agy is a prerequisite, like Claude Code: `rc.sh` neither installs it nor signs
+in for you, and `open --agent agy` stops with a pointer to this section when
+agy is missing or signed out.
+
+1. Install it with the official script. Read it first; it needs no sudo and
+   installs to `~/.local/bin`:
+   `curl -fsSL https://antigravity.google.com/cli/install.sh | bash`.
+   If `~/.local/bin` is not in your `PATH`, the installer warns; add it.
+2. Sign in once: run `agy` with no arguments and follow the prompt. Over ssh it
+   prints a URL to open in a browser. `agy models` prints the models once you
+   are signed in and fails when you are not; that is the check `rc.sh` makes.
+3. Choose a model from `agy models` and put it in `desk.config.json`:
+   `"agy": { "model": "<id>" }`. Quota is per model, so one can be used up while
+   another still works.
+4. A folder agy has not seen asks "Do you trust this folder"; `open` then exits
+   with code 3 and names the tmux window where you answer it.
+
+agy reads `AGENTS.md` and `GEMINI.md` from the project folder, but not
+`CLAUDE.md` (tested with agy 1.5.15). A project that should instruct both needs
+an `AGENTS.md`.
 
 ## Get started
 

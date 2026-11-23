@@ -9,6 +9,9 @@
     "desk.example.com"
   ],
   "claude": false,
+  "agy": {
+    "model": "MODEL_ID_FROM_AGY_MODELS"
+  },
   "machines": {
     "laptop": {
       "ssh": "laptop",

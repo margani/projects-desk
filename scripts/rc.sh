@@ -11,8 +11,19 @@
 #   rc.sh list                    every project: open/closed, status, idle time
 #   rc.sh open <project>          open a new session for one project (or the hub)
 #   rc.sh open --resume <project> resume its last conversation instead
+#   rc.sh open --agent agy <project>
+#                                 open it with agy (Google Antigravity CLI)
+#                                 instead; Claude Code stays the default. It
+#                                 runs in its own tmux session `agy-rc`, and
+#                                 the model is `agy.model` in desk.config.json.
+#                                 agy must be installed and signed in already
+#                                 (README, "Sessions with agy"); idle-close
+#                                 never touches it, as agy has no session file.
 #   rc.sh close <project>         /exit it; refuses while it is working
 #   rc.sh close --force <project> close it even while it is working
+#   rc.sh close --agent agy <project>
+#                                 close its agy session (needs --force); without
+#                                 --agent a project's Claude session wins
 #   rc.sh ... --on <machine>      run any of the above on another machine
 #                                 (desk.config.json `machines`); `claude` is
 #                                 this machine and the default
@@ -44,6 +55,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECTS_DIR="${PROJECTS_DIR:-$(dirname "$REPO")}"
 HUB_DIR="${RC_HUB_DIR:-$PROJECTS_DIR/hub}"
 SESSION="${RC_SESSION:-claude-rc}"
+# agy sessions live in their own tmux session so close-idle and `projects`,
+# which only know Claude's session files, never see them.
+AGY_SESSION="${RC_AGY_SESSION:-agy-rc}"
 MODE="${RC_PERMISSION_MODE:-auto}"
 # 24 hours: with 3 days, 9 sessions idle for 41 h held about 7 GB while
 # swap was full.
@@ -147,6 +161,33 @@ idle_hours() {
   echo $(( ($(date +%s) - at / 1000) / 3600 ))
 }
 
+# --- agy (Google Antigravity CLI) -------------------------------------------
+agy_window_of() {
+  tmux list-windows -t "$AGY_SESSION" -F '#{window_id} #{window_name}' 2>/dev/null |
+    awk -v n="$1" '$2 == n { print $1; exit }'
+}
+agy_pid() {
+  local win pane
+  win="$(agy_window_of "$1")"; [ -n "$win" ] || return 0
+  pane="$(tmux list-panes -t "$win" -F '#{pane_pid}' | head -n1)"
+  pgrep -P "$pane" -x agy | head -n1
+}
+agy_link() {
+  tmux capture-pane -p -t "$(agy_window_of "$1")" 2>/dev/null |
+    { grep -oE 'https://antigravity\.google\.com/r/[A-Za-z0-9-]+' || true; } | tail -n1
+}
+agy_trust_prompt() { tmux capture-pane -p -t "$(agy_window_of "$1")" 2>/dev/null | grep -q 'trust this folder'; }
+agy_model() { jq -r '.agy.model // empty' "$CONFIG" 2>/dev/null; }
+# agy is a prerequisite, like Claude Code: never installed or signed in here.
+# `agy models` needs a sign-in and sends no prompt: it exits 1 when signed out
+# (tested 2026-11-23 with an empty HOME), 0 when signed in.
+agy_ready() {
+  command -v agy >/dev/null ||
+    die "agy is not installed. rc.sh does not install it: see README.md, \"Sessions with agy\""
+  agy models >/dev/null 2>&1 ||
+    die "agy is not signed in (or cannot reach its service). rc.sh does not sign in: see README.md, \"Sessions with agy\""
+}
+
 # --- other machines ---------------------------------------------------------
 machine_field() { jq -r --arg m "$1" --arg f "$2" '.machines[$m][$f] // empty' "$CONFIG" 2>/dev/null; }
 remote_machines() { jq -r '.machines // {} | keys[]' "$CONFIG" 2>/dev/null | grep -vxF "$LOCAL_MACHINE"; }
@@ -182,18 +223,25 @@ remote_run() {
 }
 
 cmd_list() {
-  printf '%-10s %-18s %-8s %-8s %-6s %s\n' MACHINE PROJECT STATE STATUS IDLE SESSION
+  printf '%-10s %-6s %-18s %-8s %-8s %-6s %s\n' MACHINE AGENT PROJECT STATE STATUS IDLE SESSION
   for p in hub $(projects); do
     local pid st
     pid="$(claude_pid "$p")"
     if [ -z "$pid" ]; then
-      printf '%-10s %-18s %-8s %-8s %-6s %s\n' "$LOCAL_MACHINE" "$p" closed "" "" "$(has_status "$p" || echo "(no status file yet)")"
+      printf '%-10s %-6s %-18s %-8s %-8s %-6s %s\n' "$LOCAL_MACHINE" claude "$p" closed "" "" "$(has_status "$p" || echo "(no status file yet)")"
       continue
     fi
     st="$(info "$pid" '.status // "starting"')"
     trust_prompt "$p" && st="needs-trust"
-    printf '%-10s %-18s %-8s %-8s %-6s %s%s\n' "$LOCAL_MACHINE" "$p" open "$st" "$(idle_hours "$pid")h" "$(info "$pid" '.name // "-"')" \
+    printf '%-10s %-6s %-18s %-8s %-8s %-6s %s%s\n' "$LOCAL_MACHINE" claude "$p" open "$st" "$(idle_hours "$pid")h" "$(info "$pid" '.name // "-"')" \
       "$(if [ "$p" != hub ] && ! has_status "$p"; then echo "  (no status file yet)"; fi)"
+  done
+  local w
+  for w in $(tmux list-windows -t "$AGY_SESSION" -F '#{window_name}' 2>/dev/null); do
+    local st=open
+    [ -n "$(agy_pid "$w")" ] || st=exited
+    agy_trust_prompt "$w" && st=needs-trust
+    printf '%-10s %-6s %-18s %-8s %-8s %-6s %s\n' "$LOCAL_MACHINE" agy "$w" "$st" "" "" "$(agy_link "$w")"
   done
   # Every configured machine, minus its header; one that is off is one row.
   local m out
@@ -206,7 +254,10 @@ cmd_list() {
   done
 }
 
-cmd_where() { [ -n "$(claude_pid "${1:?usage: rc.sh where <project>}")" ] && echo open || echo closed; }
+cmd_where() {
+  local p="${1:?usage: rc.sh where <project>}"
+  { [ -n "$(claude_pid "$p")" ] || [ -n "$(agy_pid "$p")" ]; } && echo open || echo closed
+}
 
 # The window's command. Every part is shell-quoted: tmux runs this string
 # through the shell. A non-empty second argument resumes.
@@ -220,9 +271,60 @@ session_cmd() {
   printf '; exec "${SHELL:-bash}"'
 }
 
+# Opens a project with agy: its own tmux session, the model from the config,
+# and the Remote Control link printed once agy shows it. A new folder waits
+# at agy's trust prompt, exit code 3 as for Claude Code.
+cmd_open_agy() {
+  local p="$1" dir model win link
+  { openable "$p" && [ "$p" != hub ]; } || die "no project folder '$p' in $PROJECTS_DIR for agy (a project has a status file, a git repo or a CLAUDE.md)"
+  agy_ready
+  model="$(agy_model)"
+  [ -n "$model" ] || die "no model for agy: set \"agy\": {\"model\": \"<id>\"} in $CONFIG (ids: agy models)"
+  [[ "$model" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "agy.model '$model' is not a plain model id"
+  dir="$(dir_of "$p")"
+  if [ -n "$(agy_pid "$p")" ]; then
+    echo "$p is already open with agy: $(agy_link "$p")"
+    return 0
+  fi
+  win="$(agy_window_of "$p")"; [ -n "$win" ] && tmux kill-window -t "$win"
+  local run
+  run="$(printf '%q ' agy --remote-control --model "$model"; printf '; exec "${SHELL:-bash}"')"
+  if tmux has-session -t "$AGY_SESSION" 2>/dev/null; then
+    tmux new-window -d -t "$AGY_SESSION" -n "$p" -c "$dir" "$run"
+  else
+    tmux new-session -d -s "$AGY_SESSION" -n "$p" -c "$dir" "$run"
+  fi
+  for _ in $(seq 60); do
+    sleep 1
+    if agy_trust_prompt "$p"; then
+      echo "$p is waiting at agy's \"trust this folder\" prompt; answer it in tmux window $AGY_SESSION:$p" >&2
+      return 3
+    fi
+    link="$(agy_link "$p")"
+    if [ -n "$link" ]; then
+      echo "$p is open with agy: $link"
+      return 0
+    fi
+  done
+  echo "$p did not print an agy Remote Control link within 60 s; see tmux window $AGY_SESSION:$p" >&2
+  return 1
+}
+
 cmd_open() {
-  local resume=""
-  [ "${1:-}" = --resume ] && { resume=1; shift; }
+  local resume="" agent=claude
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --resume) resume=1; shift ;;
+      --agent) [ -n "${2:-}" ] || die "--agent needs a name (claude or agy)"; agent="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+  case "$agent" in
+    claude) ;;
+    agy) [ -z "$resume" ] || die "--resume is for Claude Code only"
+         cmd_open_agy "${1:?usage: rc.sh open --agent agy <project>}"; return ;;
+    *) die "unknown agent '$agent' (claude or agy)" ;;
+  esac
   local p="${1:?usage: rc.sh open [--resume] <project>}" dir win pid
   if [ "$p" != hub ] && ! openable "$p"; then
     die "no project folder '$p' in $PROJECTS_DIR (a project has a status file, earlier Claude conversations, a git repo or a CLAUDE.md; known: $(projects | tr '\n' ' '))"
@@ -272,11 +374,47 @@ cmd_open() {
   return 1
 }
 
+# agy has no session file, so "working" cannot be read: closing needs --force.
+# /exit ends it cleanly (tested 2026-11-23); unsent text would swallow it, so
+# the line is cleared first.
+close_agy() {
+  local p="$1" force="$2" pid win
+  win="$(agy_window_of "$p")"; pid="$(agy_pid "$p")"
+  if [ -z "$pid" ]; then tmux kill-window -t "$win"; echo "$p is not open"; return 0; fi
+  if [ -z "$force" ]; then
+    echo "$p runs agy, which does not report whether it is working; rc.sh close --force $p closes it." >&2
+    return 2
+  fi
+  tmux send-keys -t "$win" Escape C-u
+  tmux send-keys -t "$win" -l '/exit'; sleep 0.5
+  tmux send-keys -t "$win" Enter
+  for _ in $(seq 30); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "$p did not exit within 30 s; see tmux window $AGY_SESSION:$p" >&2
+    return 1
+  fi
+  tmux kill-window -t "$win"
+  echo "$p closed"
+}
+
 cmd_close() {
-  local force=""
-  [ "${1:-}" = --force ] && { force=1; shift; }
-  local p="${1:?usage: rc.sh close [--force] <project>}" pid why
-  pid="$(claude_pid "$p")"
+  local force="" agent=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=1; shift ;;
+      --agent) [ -n "${2:-}" ] || die "--agent needs a name (claude or agy)"; agent="$2"; shift 2 ;;
+      *) break ;;
+    esac
+  done
+  local p="${1:?usage: rc.sh close [--force] [--agent claude|agy] <project>}" pid why
+  case "$agent" in ""|claude|agy) ;; *) die "unknown agent '$agent' (claude or agy)" ;; esac
+  # A project may run under both agents; --agent picks one, and without it
+  # Claude Code wins (2026-11-23: a test close --force of an agy window named
+  # like this very session would have closed the Claude session).
+  pid=""; [ "$agent" = agy ] || pid="$(claude_pid "$p")"
+  if [ -z "$pid" ] && [ "$agent" != claude ] && [ -n "$(agy_window_of "$p")" ]; then
+    close_agy "$p" "$force"; return
+  fi
   if [ -z "$pid" ]; then
     local win; win="$(window_of "$p")"; [ -n "$win" ] && tmux kill-window -t "$win"
     echo "$p is not open"
@@ -345,11 +483,13 @@ if [ $# -gt 0 ]; then
   while [ $# -gt 0 ]; do
     case "$1" in
       --on) [ -n "${2:-}" ] || die "--on needs a machine name"; ON="$2"; shift 2 ;;
+      --agent) [ -n "${2:-}" ] || die "--agent needs a name (claude or agy)"; rest+=("$1" "$2"); shift 2 ;;
       *) rest+=("$1"); shift ;;
     esac
   done
   proj=""
-  for a in "${rest[@]+"${rest[@]}"}"; do case "$a" in -*) ;; *) proj="$a" ;; esac; done
+  prev=""
+  for a in "${rest[@]+"${rest[@]}"}"; do case "$a" in -*) ;; *) [ "$prev" = --agent ] || proj="$a" ;; esac; prev="$a"; done
   if [ -n "$ON" ] && [ "$ON" != "$LOCAL_MACHINE" ]; then
     remote_run "$ON" "$cmd" "${rest[@]+"${rest[@]}"}"
     exit $?

@@ -35,6 +35,12 @@ function checkMachines(cfg) {
     if ('ssh' in m && !/^[A-Za-z0-9][A-Za-z0-9._@-]*$/.test(m.ssh ?? '')) problems.push(`machines.${name}.ssh must be a plain ssh host alias`);
     if ('projects_dir' in m && !/^[A-Za-z0-9._/-]+$/.test(m.projects_dir ?? '')) problems.push(`machines.${name}.projects_dir must be a path under the home folder of that machine`);
   }
+  // scripts/rc.sh passes agy.model to `agy --model` inside a tmux command.
+  const agy = cfg?.agy;
+  if (agy !== undefined) {
+    if (typeof agy !== 'object' || agy === null || Array.isArray(agy)) problems.push('agy must be an object: {"model": "<id from agy models>"}');
+    else if ('model' in agy && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(agy.model ?? '')) problems.push('agy.model must be a plain model id');
+  }
   return problems;
 }
 
