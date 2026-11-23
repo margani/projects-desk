@@ -14,6 +14,7 @@ import { query, usageStatement } from './lib/d1.mjs';
 import { collectApps } from './lib/apps.mjs';
 import { loadStatus } from './lib/schema.mjs';
 import { fetchLimits, scanTranscripts, buildClaudeUsage, readModelSettings, openConversations } from './lib/claude-usage.mjs';
+import { collectIssues } from './lib/issues.mjs';
 import os from 'node:os';
 
 const desk = loadDeskConfig();
@@ -45,6 +46,11 @@ const collectClaude = async () => {
   const open = await openConversations({ sessionsDir: path.join(home, '.claude/sessions'), home, files: scan.state.files });
   return { claude: buildClaudeUsage({ fetched, previous: prevClaude, hours: scan.state.hours, tools: scan.state.tools, linesChanged, settings, open }), scan };
 };
+// Issue counts come from GitHub after the probes: two bursts of network at once is what broke the Claude fetch (#45).
+// A project GitHub failed for keeps its last good numbers.
+const issues = await collectIssues(entries);
+const prevIssues = await readJson('usage/issues.json');
+for (const [k, v] of Object.entries(prevIssues?.projects ?? {})) if (!(k in issues.projects) && entries.some((x) => x.ok && x.data.project === k)) issues.projects[k] = v;
 // Claude is opt-in: it reads an undocumented endpoint with the Claude Code login.
 const [github, fresh, apps, { claude = null, scan = null } = {}] = await Promise.all([collectUsage(accounts), collectStorage(sources), collectApps(entries, { hosts: desk.domains }), desk.claude ? collectClaude() : undefined]);
 // A failed source shows its last reading instead of an empty row.
@@ -53,13 +59,14 @@ const storage = carryForward(fresh, previous);
 await mkdir(path.join(root, 'usage'), { recursive: true });
 await writeFile(path.join(root, 'usage/github.json'), JSON.stringify(github, null, 2) + '\n');
 await writeFile(path.join(root, 'usage/storage.json'), JSON.stringify(storage, null, 2) + '\n');
+await writeFile(path.join(root, 'usage/issues.json'), JSON.stringify(issues, null, 2) + '\n');
 await writeFile(path.join(root, 'usage/apps.json'), JSON.stringify(apps, null, 2) + '\n');
 if (claude) {
   await writeFile(path.join(root, 'usage/claude.json'), JSON.stringify(claude, null, 2) + '\n');
   await writeFile(path.join(root, 'usage/claude-scan.json'), JSON.stringify(scan.state) + '\n');
 }
 const now = Date.now();
-await query([usageStatement('github', github, now), usageStatement('storage', storage, now), usageStatement('apps', apps, now), claude ? usageStatement('claude', claude, now) : { sql: 'DELETE FROM usage WHERE key = ?', params: ['claude'] }], { write: true });
+await query([usageStatement('github', github, now), usageStatement('storage', storage, now), usageStatement('apps', apps, now), usageStatement('issues', issues, now), claude ? usageStatement('claude', claude, now) : { sql: 'DELETE FROM usage WHERE key = ?', params: ['claude'] }], { write: true });
 
 for (const a of github.accounts) {
   console.log(a.problem ? `  ${a.login}: ${a.problem}` : `  ${a.login} (${a.plan}): ${a.minutes.counted} counted (${a.minutes.total} raw)/${a.minutes.included ?? '?'} min, $${a.billed_usd} billed`);
@@ -69,6 +76,8 @@ for (const s of storage.sources) {
   console.log(s.problem && s.used == null ? `  ${label}: ${s.problem}` : `  ${label}: ${bytes(s.used)}${s.total ? ` / ${bytes(s.total)}` : ''}${s.percent != null ? ` (${s.percent}%)` : ''}`);
 }
 for (const a of apps.apps) console.log(`  app ${a.project}: ${a.framable ? 'window' : `tab (${a.reason ?? 'unknown'})`}${a.icon ? '' : ', no icon'}`);
+for (const p of issues.problems) console.log(`  issues ${p}`);
+console.log(`  issues: ${Object.keys(issues.projects).length} projects read from GitHub`);
 if (claude) {
   const cl = claude.limits;
   console.log(claude.problem ? `  claude: ${claude.problem}` : `  claude (${claude.plan}): session ${cl.session?.percent}%, week ${cl.weekly?.percent}%`);

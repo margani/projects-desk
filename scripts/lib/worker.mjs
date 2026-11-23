@@ -1,7 +1,7 @@
 // The Worker behind projects.example.dev: renders the page on each
 // request from D1, so a status change shows on the next load with no commit,
 // build or deploy. Manifest, icons and the service worker are static assets.
-import { renderSite, parseUsage, checkGithubUsage, checkStorage, checkApps, checkClaude, checkUsers } from './site.mjs';
+import { renderSite, parseUsage, checkGithubUsage, checkStorage, checkApps, checkClaude, checkUsers, checkIssues } from './site.mjs';
 
 const PAGE = new Set(['/', '/index.html']);
 
@@ -20,6 +20,7 @@ export async function readData(db) {
     apps: parseUsage(byKey.apps?.body, checkApps, 'desktop apps', console.warn),
     claude: parseUsage(byKey.claude?.body, checkClaude, 'Claude usage', console.warn),
     users: parseUsage(byKey.users?.body, checkUsers, 'user numbers', console.warn),
+    issues: parseUsage(byKey.issues?.body, checkIssues, 'issue counts', console.warn),
     updatedAt: times.at(-1) ?? null,
   };
 }
