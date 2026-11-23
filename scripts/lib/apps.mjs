@@ -143,10 +143,30 @@ export async function probeApp({ project, name = project, url }, { fetchImpl = f
   return out;
 }
 
+// 28 probes at once made the local DNS server (a small router) drop queries:
+// 18 lookups waited its 5 s retry, every probe ended "no answer in 10s", and
+// the Claude usage fetch in the same run died with UND_ERR_CONNECT_TIMEOUT for
+// two days (2026-11-23). One at a time the same lookups take a few ms.
+export const PROBE_CONCURRENCY = 4;
+
+/** Like Promise.allSettled over `items`, with at most `limit` calls running at once. */
+export async function settleLimited(items, fn, limit) {
+  const out = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try { out[i] = { status: 'fulfilled', value: await fn(items[i], i) }; } catch (reason) { out[i] = { status: 'rejected', reason }; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
 export async function collectApps(entries, opts = {}) {
   // One failing probe becomes its own row; it never fails the whole collection.
   const list = appList(entries);
-  const settled = await Promise.allSettled(list.map((a) => probeApp(a, opts)));
+  const settled = await settleLimited(list, (a) => probeApp(a, opts), opts.concurrency ?? PROBE_CONCURRENCY);
   const apps = settled.map((s, i) => (s.status === 'fulfilled' ? s.value : { project: list[i].project, name: list[i].name, url: list[i].url, framable: null, reason: `probe failed: ${s.reason?.message ?? s.reason}`, icon: null }));
   return { generated_at: new Date(opts.now ?? Date.now()).toISOString(), apps };
 }
