@@ -9,7 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, utimesSync, chmodS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { probeApp, collectApps, iconFromHtml } from '../scripts/lib/apps.mjs';
+import { probeApp, collectApps, iconFromHtml, PROBE_CONCURRENCY, settleLimited } from '../scripts/lib/apps.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 // These run the systemd and tmux scripts, which only exist for Linux.
@@ -45,6 +45,28 @@ test('app probe: one slow app does not hold up the others', async () => {
   ]);
   assert.notEqual(out, 'still pending');
   assert.equal(out.apps.find((a) => a.project === 'fine').icon, 'https://fine.example/i.png');
+});
+
+test('app probes: never more than the limit run at once, so a small DNS server is not flooded (#45)', async () => {
+  let running = 0;
+  let peak = 0;
+  const fetchImpl = async () => {
+    running++; peak = Math.max(peak, running);
+    await new Promise((r) => setTimeout(r, 20));
+    running--;
+    return page('<link rel="icon" href="/i.png">');
+  };
+  const entries = Array.from({ length: 28 }, (_, i) => ({ ok: true, name: `p${i}`, data: { project: `p${i}`, urls: { production: `https://p${i}.example/` } } }));
+  const out = await collectApps(entries, { fetchImpl, timeoutMs: 1000 });
+  assert.equal(out.apps.length, 28, 'every app still has a row');
+  assert.ok(peak > 1, 'it does run in parallel');
+  assert.ok(peak <= PROBE_CONCURRENCY, `${peak} probes at once`);
+});
+
+test('settleLimited keeps order and turns a throw into a rejected entry', async () => {
+  const out = await settleLimited([1, 2, 3], async (n) => { if (n === 2) throw new Error('x'); return n * 2; }, 2);
+  assert.deepEqual(out.map((r) => r.status), ['fulfilled', 'rejected', 'fulfilled']);
+  assert.equal(out[2].value, 6);
 });
 
 test('app probe: icon parsing stays fast on a page made of unclosed link tags', () => {
