@@ -5,6 +5,8 @@ import { loadStatus } from './schema.mjs';
 import { renderPage } from './render.mjs';
 export { checkApps } from './apps.mjs';
 export { checkUsers } from './users.mjs';
+export { checkIssues } from './issues.mjs';
+import { applyIssues } from './issues.mjs';
 
 /** usage/github.json: an object, or why it cannot be shown. */
 export function checkGithubUsage(usage) {
@@ -49,8 +51,8 @@ async function sha16(text) {
  *   for one that could not be read.
  * @param updatedAt ISO time of the newest data, for the footer.
  */
-export async function renderSite({ statusRows, usage = null, storage = null, apps = null, claude = null, users = null, css, js, now, updatedAt = null }) {
-  const entries = statusRows.map(({ name, text, problem }) => (problem ? { name, ok: false, problems: [problem] } : loadStatus(name, text)));
+export async function renderSite({ statusRows, usage = null, storage = null, apps = null, claude = null, users = null, issues = null, css, js, now, updatedAt = null }) {
+  const entries = applyIssues(statusRows.map(({ name, text, problem }) => (problem ? { name, ok: false, problems: [problem] } : loadStatus(name, text))), issues);
   // The version id is a hash of the page rendered at a fixed time with no id,
   // so it changes when content or code changes, not on every request.
   const fingerprint = renderPage(entries, { css, js, now: 0, version: '', usage, storage, apps, claude, users });

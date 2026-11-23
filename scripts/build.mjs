@@ -6,11 +6,11 @@
 import { readFile, readdir, mkdir, writeFile, copyFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { renderSite, parseUsage, checkGithubUsage, checkStorage, checkApps, checkClaude, checkUsers } from './lib/site.mjs';
+import { renderSite, parseUsage, checkGithubUsage, checkStorage, checkApps, checkClaude, checkUsers, checkIssues } from './lib/site.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export async function build({ statusDir = path.join(root, 'status'), usageFile = path.join(statusDir, '../usage/github.json'), storageFile = path.join(statusDir, '../usage/storage.json'), appsFile = path.join(statusDir, '../usage/apps.json'), claudeFile = path.join(statusDir, '../usage/claude.json'), usersFile = path.join(statusDir, '../usage/users.json'), outDir = path.join(root, 'dist'), now = Date.now(), log = console.log } = {}) {
+export async function build({ statusDir = path.join(root, 'status'), usageFile = path.join(statusDir, '../usage/github.json'), storageFile = path.join(statusDir, '../usage/storage.json'), appsFile = path.join(statusDir, '../usage/apps.json'), claudeFile = path.join(statusDir, '../usage/claude.json'), usersFile = path.join(statusDir, '../usage/users.json'), issuesFile = path.join(statusDir, '../usage/issues.json'), outDir = path.join(root, 'dist'), now = Date.now(), log = console.log } = {}) {
   const [css, js] = await Promise.all([
     readFile(path.join(root, 'src/styles.css'), 'utf8'),
     readFile(path.join(root, 'src/client.js'), 'utf8'),
@@ -42,7 +42,8 @@ export async function build({ statusDir = path.join(root, 'status'), usageFile =
   const apps = parseUsage(await readFile(appsFile, 'utf8').catch(() => null), checkApps, 'desktop apps file', log);
   const claude = parseUsage(await readFile(claudeFile, 'utf8').catch(() => null), checkClaude, 'Claude usage file', log);
   const users = parseUsage(await readFile(usersFile, 'utf8').catch(() => null), checkUsers, 'user numbers file', log);
-  const { entries, version, html } = await renderSite({ statusRows, usage, storage, apps, claude, users, css, js, now });
+  const issues = parseUsage(await readFile(issuesFile, 'utf8').catch(() => null), checkIssues, 'issue counts file', log);
+  const { entries, version, html } = await renderSite({ statusRows, usage, storage, apps, claude, users, issues, css, js, now });
 
   for (const x of entries) {
     if (x.ok) log(`  ok       ${x.name}`);
