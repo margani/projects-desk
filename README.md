@@ -110,6 +110,9 @@ The status file format is in
 [STATUS_INSTRUCTIONS.md](STATUS_INSTRUCTIONS.md). Internals are in
 [CLAUDE.md](CLAUDE.md).
 
+Optional: a [stop gate](docs/STOP_GATE.md) keeps a Claude Code session from closing
+while its project still has open issues.
+
 ## The Claude usage tab
 
 An optional tab shows your Claude plan limits and which projects used them. It

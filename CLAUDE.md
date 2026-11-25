@@ -68,6 +68,9 @@ node scripts/watch.mjs --status   # the Windows/macOS runner: also --background,
   becomes a `problem`.
 - `scripts/rc.sh`, `scripts/rc-session.sh`, `hub/CLAUDE.md`: optional Claude Code
   sessions in tmux.
+- `scripts/stop-gate.mjs`, `scripts/lib/stop-gate.mjs`: optional Claude Code
+  `Stop` hook that holds a closing message while issues are open
+  (`docs/STOP_GATE.md`).
 - `scripts/deploy.mjs` and `scripts/lib/deploy.mjs`: deploys, then fails if a
   custom domain answers without an Access login. `scripts/deploy.sh` only calls
   it, for Workers Builds.
